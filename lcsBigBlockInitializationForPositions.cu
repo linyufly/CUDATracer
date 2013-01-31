@@ -1,7 +1,7 @@
 /******************************************************************
 File		:	lcsBigBlockInitializationForPositions.cu
 Author		:	Mingcheng Chen
-Last Update	:	January 30th, 2013
+Last Update	:	January 31st, 2013
 *******************************************************************/
 
 #include <stdio.h>
@@ -9,19 +9,10 @@ Last Update	:	January 30th, 2013
 #define BLOCK_SIZE 512
 
 __global__ void BigBlockInitializationForPositionsKernel(double *globalVertexPositions,
-			
 						 int *blockedGlobalPointIDs,
-
    						 int *startOffsetInPoint,
-
-						 int *startOffsetInPointForBig,
-						 double *vertexPositionsForBig,
-
-						 int *bigBlocks
+						 double *vertexPositionsForBig
 			     			 ) {
-	// Get work group ID
-	int workGroupID = blockIdx.x;
-	
 	// Get number of threads in a work group
 	int numOfThreads = blockDim.x;
 
@@ -29,19 +20,16 @@ __global__ void BigBlockInitializationForPositionsKernel(double *globalVertexPos
 	int localID = threadIdx.x;
 
 	// Get interesting block ID of the current big block
-	int interestingBlockID = bigBlocks[workGroupID];
+	int interestingBlockID = blockIdx.x;
 
 	// Declare some work arrays
 	double *gVertexPositions;
 		
 	int startPoint = startOffsetInPoint[interestingBlockID];
-
 	int numOfPoints = startOffsetInPoint[interestingBlockID + 1] - startPoint;
 
-	int startPointForBig = startOffsetInPointForBig[interestingBlockID];
-
 	// Initialize vertexPositions
-	gVertexPositions = vertexPositionsForBig + startPointForBig * 3;
+	gVertexPositions = vertexPositionsForBig + startPoint * 3;
 
 	for (int i = localID; i < numOfPoints * 3; i += numOfThreads) {
 		int localPointID = i / 3;
@@ -53,22 +41,17 @@ __global__ void BigBlockInitializationForPositionsKernel(double *globalVertexPos
 }
 
 extern "C"
-void BigBlockInitializationForPositions(double *globalVertexPositions,
-			
-						 int *blockedGlobalPointIDs,
-
-   						 int *startOffsetInPoint,
-
-						 int *startOffsetInPointForBig,
-						 double *vertexPositionsForBig,
-
-						 int *bigBlocks, int numOfBigBlocks
-			     			 ) {
+void BigBlockInitializationForPositions(double *globalVertexPositions,	
+					int *blockedGlobalPointIDs,
+   					int *startOffsetInPoint,
+					double *vertexPositionsForBig,
+					int numOfInterestingBlocks
+			     		) {
 	dim3 dimBlock(BLOCK_SIZE, 1, 1);
-	dim3 dimGrid(numOfBigBlocks, 1, 1);
+	dim3 dimGrid(numOfInterestingBlocks, 1, 1);
 
-	BigBlockInitializationForPositionsKernel<<<dimGrid, dimBlock>>>(globalVertexPositions, blockedGlobalPointIDs, startOffsetInPoint,
-									startOffsetInPointForBig, vertexPositionsForBig, bigBlocks);
+	BigBlockInitializationForPositionsKernel<<<dimGrid, dimBlock>>>(globalVertexPositions, blockedGlobalPointIDs,
+									startOffsetInPoint, vertexPositionsForBig);
 
 	cudaError_t err = cudaDeviceSynchronize();
 	if (err) {

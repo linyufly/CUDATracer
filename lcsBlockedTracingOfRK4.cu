@@ -1,18 +1,10 @@
 /*****************************************************
 File		:	lcsBlockedTracingOfRK4.cu
 Author		:	Mingcheng Chen
-Last Update	:	January 29th, 2013
+Last Update	:	January 31st, 2013
 ******************************************************/
 
 #include <stdio.h>
-
-#define BLOCK_SIZE 256
-#define SHARED_MEMORY_BYTES 16384
-
-extern "C"
-int GroupSizeOfTracingKernel() {
-	return BLOCK_SIZE;
-}
 
 __device__ inline double DeterminantThree(double *a) {
 	// a[0] a[1] a[2]
@@ -103,21 +95,15 @@ __device__ inline int FindCell(double *particle, int *connectivities, int *links
 }
 
 __global__ void BlockedTracingKernelOfRK4(double *globalVertexPositions,
-					double *globalStartVelocities,
-					double *globalEndVelocities,
 					int *globalTetrahedralConnectivities,
 					int *globalTetrahedralLinks,
 
 					int *startOffsetInCell,
 					int *startOffsetInPoint,
 
-					int *startOffsetInCellForBig,
-					int *startOffsetInPointForBig,
 					double *vertexPositionsForBig,
 					double *startVelocitiesForBig,
 					double *endVelocitiesForBig,
-
-					bool *canFitInSharedMemory,
 
 					int *blockedLocalConnectivities,
 					int *blockedLocalLinks,
@@ -144,8 +130,10 @@ __global__ void BlockedTracingKernelOfRK4(double *globalVertexPositions,
 
 					int *exitCells,
 
-					double startTime, double endTime, double timeStep, double epsilon) {
-	__shared__ char sharedMemory[SHARED_MEMORY_BYTES];
+					double startTime, double endTime, double timeStep, double epsilon,
+
+					int sharedMemorySize) {
+	__shared__ extern char sharedMemory[];
 
 	// Get work group ID
 	int groupID = blockIdx.x;
@@ -169,18 +157,18 @@ __global__ void BlockedTracingKernelOfRK4(double *globalVertexPositions,
 	int *connectivities;
 	int *links;
 
-	bool canFit = canFitInSharedMemory[interestingBlockID];
-
 	int startCell = startOffsetInCell[interestingBlockID];
 	int startPoint = startOffsetInPoint[interestingBlockID];
 
 	int numOfCells = startOffsetInCell[interestingBlockID + 1] - startCell;
 	int numOfPoints = startOffsetInPoint[interestingBlockID + 1] - startPoint;
 
-	//int startCellForBig = startOffsetInCellForBig[interestingBlockID];
-	int startPointForBig = startOffsetInPointForBig[interestingBlockID];
-
-	if (canFit) { // This branch fills in the shared memory
+	// Assuming int is 4 bytes and double is 8 bytes
+	//	 localNumOfCells * sizeof(int) * 4 +		// this->localConnectivities
+	//	 localNumOfCells * sizeof(int) * 4 +		// this->localLinks
+	//	 localNumOfPoints * sizeof(double) * 3 +	// point positions
+	//	 localNumOfPoints * sizeof(double) * 3 * 2;	// point velocities (start and end)
+	if (((numOfCells << 5) + ((numOfPoints * 9) << 3)) <= sharedMemorySize) { // This branch fills in the shared memory
 		// Initialize vertexPositions, startVelocities and endVelocities
 		vertexPositions = (double *)sharedMemory;
 		startVelocities = vertexPositions + numOfPoints * 3;
@@ -189,34 +177,27 @@ __global__ void BlockedTracingKernelOfRK4(double *globalVertexPositions,
 		// Initialize connectivities and links
 		connectivities = (int *)(endVelocities + numOfPoints * 3);
 		links = connectivities + (numOfCells << 2);
+
+		for (int i = localID; i < numOfPoints * 3; i += numOfThreads) {
+			vertexPositions[i] = vertexPositionsForBig[startPoint * 3 + i];
+			startVelocities[i] = startVelocitiesForBig[startPoint * 3 + i];
+			endVelocities[i] = endVelocitiesForBig[startPoint * 3 + i];
+		}
+
+		for (int i = localID; i < (numOfCells << 2); i += numOfThreads) {
+			connectivities[i] = blockedLocalConnectivities[(startCell << 2) + i];
+			links[i] = blockedLocalLinks[(startCell << 2) + i];
+		}
 	} else { // This branch fills in the global memory
 		// Initialize vertexPositions, startVelocities and endVelocities
-		vertexPositions = vertexPositionsForBig + startPointForBig * 3;
-		startVelocities = startVelocitiesForBig + startPointForBig * 3;
-		endVelocities = endVelocitiesForBig + startPointForBig * 3;
+		vertexPositions = vertexPositionsForBig + startPoint * 3;
+		startVelocities = startVelocitiesForBig + startPoint * 3;
+		endVelocities = endVelocitiesForBig + startPoint * 3;
 
 		// Initialize connectivities and links
 		connectivities = blockedLocalConnectivities + (startCell << 2);
 		links = blockedLocalLinks + (startCell << 2);
 	}
-
-	for (int i = localID; i < numOfPoints * 3; i += numOfThreads) {
-		int localPointID = i / 3;
-		int dimensionID = i % 3;
-		int globalPointID = blockedGlobalPointIDs[startPoint + localPointID];
-
-		if (canFit) {
-			vertexPositions[i] = globalVertexPositions[globalPointID * 3 + dimensionID];
-			startVelocities[i] = globalStartVelocities[globalPointID * 3 + dimensionID];
-			endVelocities[i] = globalEndVelocities[globalPointID * 3 + dimensionID];
-		}
-	}
-
-	if (canFit)
-		for (int i = localID; i < (numOfCells << 2); i += numOfThreads) {
-			connectivities[i] = *(blockedLocalConnectivities + (startCell << 2) + i);
-			links[i] = *(blockedLocalLinks + (startCell << 2) + i);
-		}
 
 	__syncthreads();
 	
@@ -387,67 +368,57 @@ __global__ void BlockedTracingKernelOfRK4(double *globalVertexPositions,
 
 extern "C"
 void BlockedTracingOfRK4(double *globalVertexPositions,
-					double *globalStartVelocities,
-					double *globalEndVelocities,
-					int *globalTetrahedralConnectivities,
-					int *globalTetrahedralLinks,
+			int *globalTetrahedralConnectivities,
+			int *globalTetrahedralLinks,
 
-					int *startOffsetInCell,
-					int *startOffsetInPoint,
+			int *startOffsetInCell,
+			int *startOffsetInPoint,
 
-					int *startOffsetInCellForBig,
-					int *startOffsetInPointForBig,
-					double *vertexPositionsForBig,
-					double *startVelocitiesForBig,
-					double *endVelocitiesForBig,
+			double *vertexPositionsForBig,
+			double *startVelocitiesForBig,
+			double *endVelocitiesForBig,
 
-					bool *canFitInSharedMemory,
+			int *blockedLocalConnectivities,
+			int *blockedLocalLinks,
+			int *blockedGlobalCellIDs,
+			int *blockedGlobalPointIDs,
 
-					int *blockedLocalConnectivities,
-					int *blockedLocalLinks,
-					int *blockedGlobalCellIDs,
-					int *blockedGlobalPointIDs,
+			int *activeBlockList, // Map active block ID to interesting block ID
 
-					int *activeBlockList, // Map active block ID to interesting block ID
+			int *blockOfGroups,
+			int *offsetInBlocks,
 
-					int *blockOfGroups,
-					int *offsetInBlocks,
+			int *stage,
+			double *lastPosition,
+			double *k1,
+			double *k2,
+			double *k3,
+			double *pastTimes,
 
-					int *stage,
-					double *lastPosition,
-					double *k1,
-					double *k2,
-					double *k3,
-					double *pastTimes,
+			double *placesOfInterest,
 
-					double *placesOfInterest,
+			int *startOffsetInParticle,
+			int *blockedActiveParticleIDList,
+			int *cellLocations,
 
-					int *startOffsetInParticle,
-					int *blockedActiveParticleIDList,
-					int *cellLocations,
+			int *exitCells,
 
-					int *exitCells,
+			double startTime, double endTime, double timeStep, double epsilon, int numOfActiveBlocks,
 
-					double startTime, double endTime, double timeStep, double epsilon, int numOfActiveBlocks) {
-	dim3 dimBlock(BLOCK_SIZE, 1, 1);
+			int blockSize, int sharedMemorySize) {
+	dim3 dimBlock(blockSize, 1, 1);
 	dim3 dimGrid(numOfActiveBlocks, 1, 1);
 
-	BlockedTracingKernelOfRK4<<<dimGrid, dimBlock>>>(globalVertexPositions,
-					globalStartVelocities,
-					globalEndVelocities,
+	BlockedTracingKernelOfRK4<<<dimGrid, dimBlock, sharedMemorySize>>>(globalVertexPositions,
 					globalTetrahedralConnectivities,
 					globalTetrahedralLinks,
 
 					startOffsetInCell,
 					startOffsetInPoint,
 
-					startOffsetInCellForBig,
-					startOffsetInPointForBig,
 					vertexPositionsForBig,
 					startVelocitiesForBig,
 					endVelocitiesForBig,
-
-					canFitInSharedMemory,
 
 					blockedLocalConnectivities,
 					blockedLocalLinks,
@@ -474,7 +445,9 @@ void BlockedTracingOfRK4(double *globalVertexPositions,
 
 					exitCells,
 
-					startTime, endTime, timeStep, epsilon);
+					startTime, endTime, timeStep, epsilon,
+
+					sharedMemorySize);
 
 	cudaError_t err = cudaDeviceSynchronize();
 
