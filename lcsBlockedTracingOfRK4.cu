@@ -24,45 +24,45 @@ __device__ inline void CalculateNaturalCoordinates(double X, double Y, double Z,
 			 tetX[2] - tetX[0], tetY[2] - tetY[0], tetZ[2] - tetZ[0],
 			 tetX[3] - tetX[0], tetY[3] - tetY[0], tetZ[3] - tetZ[0]};
 
-	double V = 1 / DeterminantThree(det);
+	double V = 1.0 / DeterminantThree(det);
 
 	double z41 = tetZ[3] - tetZ[0];
 	double y34 = tetY[2] - tetY[3];
 	double z34 = tetZ[2] - tetZ[3];
 	double y41 = tetY[3] - tetY[0];
-	double a11 = (z41 * y34 - z34 * y41) * V;
+	double a11 = z41 * y34 - z34 * y41;
 
 	double x41 = tetX[3] - tetX[0];
 	double x34 = tetX[2] - tetX[3];
-	double a12 = (x41 * z34 - x34 * z41) * V;
+	double a12 = x41 * z34 - x34 * z41;
 
-	double a13 = (y41 * x34 - y34 * x41) * V;
+	double a13 = y41 * x34 - y34 * x41;
 
-	coordinates[1] = a11 * X + a12 * Y + a13 * Z;
+	coordinates[1] = (a11 * X + a12 * Y + a13 * Z) * V;
 
 	double y12 = tetY[0] - tetY[1];
 	double z12 = tetZ[0] - tetZ[1];
-	double a21 = (z41 * y12 - z12 * y41) * V;
+	double a21 = z41 * y12 - z12 * y41;
 
 	double x12 = tetX[0] - tetX[1];
-	double a22 = (x41 * z12 - x12 * z41) * V;
+	double a22 = x41 * z12 - x12 * z41;
 
-	double a23 = (y41 * x12 - y12 * x41) * V;
+	double a23 = y41 * x12 - y12 * x41;
 
-	coordinates[2] = a21 * X + a22 * Y + a23 * Z;
+	coordinates[2] = (a21 * X + a22 * Y + a23 * Z) * V;
 
 	double z23 = tetZ[1] - tetZ[2];
 	double y23 = tetY[1] - tetY[2];
-	double a31 = (z23 * y12 - z12 * y23) * V;
+	double a31 = z23 * y12 - z12 * y23;
 
 	double x23 = tetX[1] - tetX[2];
-	double a32 = (x23 * z12 - x12 * z23) * V;
+	double a32 = x23 * z12 - x12 * z23;
 
-	double a33 = (y23 * x12 - y12 * x23) * V;
+	double a33 = y23 * x12 - y12 * x23;
 
-	coordinates[3] = a31 * X + a32 * Y + a33 * Z;
+	coordinates[3] = (a31 * X + a32 * Y + a33 * Z) * V;
 
-	coordinates[0] = 1 - coordinates[1] - coordinates[2] - coordinates[3];
+	coordinates[0] = 1.0 - coordinates[1] - coordinates[2] - coordinates[3];
 }
 
 __device__ inline int FindCell(double *particle, int *connectivities, int *links, double *vertexPositions,
