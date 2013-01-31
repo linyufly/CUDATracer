@@ -10,8 +10,9 @@ __device__ inline double DeterminantThree(double *a) {
 	// a[0] a[1] a[2]
 	// a[3] a[4] a[5]
 	// a[6] a[7] a[8]
-	return a[0] * a[4] * a[8] + a[1] * a[5] * a[6] + a[2] * a[3] * a[7] -
-	       a[0] * a[5] * a[7] - a[1] * a[3] * a[8] - a[2] * a[4] * a[6];
+	//return a[0] * a[4] * a[8] + a[1] * a[5] * a[6] + a[2] * a[3] * a[7] -
+	//       a[0] * a[5] * a[7] - a[1] * a[3] * a[8] - a[2] * a[4] * a[6];
+	return a[0] * (a[4] * a[8] - a[5] * a[7]) + a[1] * (a[5] * a[6] - a[3] * a[8]) + a[2] * (a[3] * a[7] - a[4] * a[6]);
 }
 
 __device__ inline void CalculateNaturalCoordinates(double X, double Y, double Z,
