@@ -14,6 +14,11 @@ Last Update	:	January 31st, 2013
 #include <algorithm>
 #include <cuda_runtime.h>
 
+#define MAX_THREADS_PER_SM 512
+#define MAX_THREADS_PER_BLOCK 256
+#define MAX_SHARED_MEMORY_PER_SM 40000
+#define WARP_SIZE 32
+
 extern "C" void TetrahedronBlockIntersection(double *vertexPositions,
 					int *tetrahedralConnectivities,
 					int *queryTetrahedron,
@@ -120,6 +125,9 @@ int *initialCellLocations;
 lcs::ParticleRecord **particleRecords;
 int *exitCells;
 int numOfInitialActiveParticles;
+
+// For shared memory
+int maxSharedMemoryRequired;
 
 // CUDA C variables
 
@@ -605,6 +613,7 @@ void DivisionProcess() {
 	
 	// Process blocks
 	int smallEnoughBlocks = 0;
+	maxSharedMemoryRequired = 0;
 
 	//canFitInSharedMemory = new bool [numOfInterestingBlocks];
 
@@ -634,6 +643,7 @@ void DivisionProcess() {
 		int currentBlockMemoryCost = blocks[i]->EvaluateNumOfBytes();
 
 		if (currentBlockMemoryCost <= configure->GetSharedMemoryKilobytes() * 1024) smallEnoughBlocks++;
+		if (currentBlockMemoryCost > maxSharedMemoryRequired) maxSharedMemoryRequired = currentBlockMemoryCost;
 
 		//if (currentBlockMemoryCost <= configure->GetSharedMemoryKilobytes() * 1024) {
 		//	smallEnoughBlocks++;
@@ -671,6 +681,7 @@ void DivisionProcess() {
 	}
 	
 	printf("Division is done. smallEnoughBlocks = %d\n", smallEnoughBlocks);
+	printf("maxSharedMemoryRequired = %d\n", maxSharedMemoryRequired);
 	printf("\n");
 
 	// Select big blocks
@@ -1298,9 +1309,21 @@ int AssignWorkGroups(int numOfActiveBlocks, int tracingBlockSize) {
 	return sum;
 }
 
-void CalculateBlockSizeAndSharedMemorySizeForTracingKernel(int &tracingBlockSize, int &tracingSharedMemorySize) {
-	tracingBlockSize = 256;
-	tracingSharedMemorySize = 16384;
+void CalculateBlockSizeAndSharedMemorySizeForTracingKernel(double averageParticlesInBlock, int &tracingBlockSize, int &tracingSharedMemorySize) {
+	tracingBlockSize = (int)(averageParticlesInBlock / WARP_SIZE) * WARP_SIZE;
+	if (lcs::Sign(averageParticlesInBlock - tracingBlockSize, configure->GetEpsilon()) > 0)
+		tracingBlockSize += WARP_SIZE;
+	if (tracingBlockSize > MAX_THREADS_PER_BLOCK)
+		tracingBlockSize = MAX_THREADS_PER_BLOCK;
+
+	if (tracingBlockSize < WARP_SIZE)
+		tracingBlockSize = WARP_SIZE;
+	int maxNumOfBlocks = MAX_THREADS_PER_SM / tracingBlockSize;
+
+	tracingSharedMemorySize = MAX_SHARED_MEMORY_PER_SM / maxNumOfBlocks;
+	if (tracingSharedMemorySize > maxSharedMemoryRequired)
+		tracingSharedMemorySize = maxSharedMemoryRequired;
+	printf("tracingBlockSize = %d, tracingSharedMemorySize = %d\n", tracingBlockSize, tracingSharedMemorySize);
 }
 
 /// DEBUG ///
@@ -1433,12 +1456,13 @@ void Tracing() {
 			/// DEBUG ///
 			printf("RedistributeParticles done.\n");
 
-			printf("numOfActiveParticles / numOfActiveBlocks = %lf\n", (double)numOfActiveParticles / numOfActiveBlocks);
+			double averageParticlesInBlock = (double)numOfActiveParticles / numOfActiveBlocks;
+			printf("numOfActiveParticles / numOfActiveBlocks = %lf\n", averageParticlesInBlock);
 
 			GetStartOffsetInParticles(numOfActiveBlocks, numOfActiveParticles, maxNumOfStages);
 
 			int tracingBlockSize, tracingSharedMemorySize;
-			CalculateBlockSizeAndSharedMemorySizeForTracingKernel(tracingBlockSize, tracingSharedMemorySize);
+			CalculateBlockSizeAndSharedMemorySizeForTracingKernel(averageParticlesInBlock, tracingBlockSize, tracingSharedMemorySize);
 
 			int numOfWorkGroups = AssignWorkGroups(numOfActiveBlocks, tracingBlockSize);
 
