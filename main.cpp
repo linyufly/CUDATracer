@@ -246,7 +246,7 @@ void LoadFrames() {
 		double timePoint = configure->GetTimePoints()[i];
 		std::string veloFileName = configure->GetDataFilePrefix() + configure->GetDataFileIndices()[i] + "." + configure->GetDataFileSuffix();
 		printf("Loading frame %d (file = %s) ... ", i, veloFileName.c_str());
-		frames[i] = new lcs::Frame(timePoint, "data/geometry.txt", veloFileName.c_str());
+		frames[i] = new lcs::Frame(timePoint, "patient2/geometry.txt", veloFileName.c_str());
 		printf("Done.\n");
 	}
 	printf("\n");
@@ -527,8 +527,15 @@ void DivisionProcess() {
 	int *startOffsetsInLocalIDMap = new int [globalNumOfCells + 1];
 	
 	startOffsetsInLocalIDMap[0] = 0;
-	for (int i = 1; i <= globalNumOfCells; i++)
+	for (int i = 1; i <= globalNumOfCells; i++) {
+		/// DEBUG ///
+		if (numOfBlocksOfTetrahedron[i - 1] == 0) {
+			printf("zero: i = %d\n", i);
+			break;
+		}
+
 		startOffsetsInLocalIDMap[i] = startOffsetsInLocalIDMap[i - 1] + numOfBlocksOfTetrahedron[i - 1];
+	}
 
 	int *topOfCells = new int [globalNumOfCells];
 	memset(topOfCells, 0, sizeof(int) * globalNumOfCells);
