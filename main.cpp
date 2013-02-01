@@ -16,7 +16,7 @@ Last Update	:	January 31st, 2013
 
 #define MAX_THREADS_PER_SM 512
 #define MAX_THREADS_PER_BLOCK 256
-#define MAX_SHARED_MEMORY_PER_SM 40000
+#define MAX_SHARED_MEMORY_PER_SM 48000
 #define WARP_SIZE 32
 
 extern "C" void TetrahedronBlockIntersection(double *vertexPositions,
