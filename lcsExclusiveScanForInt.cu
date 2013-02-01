@@ -6,7 +6,7 @@ Last Update		:		January 29th, 2013
 
 #include <stdio.h>
 
-#define BLOCK_SIZE 1024
+#define BLOCK_SIZE 512
 
 #define NUM_BANKS 32
 #define LOG_NUM_BANKS 5
