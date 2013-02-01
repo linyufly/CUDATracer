@@ -39,6 +39,9 @@ lcs::Frame::Frame(double timePoint, const char *geometryFile, const char *veloci
 	fread(&numOfCells, sizeof(int), 1, fin);
 	fread(&numOfPoints, sizeof(int), 1, fin);
 
+	/// DEBUG ///
+	//printf("numOfPoints = %d, numOfCells = %d\n", numOfPoints, numOfCells);
+
 	int *conn = new int [numOfCells << 2];
 	int *link = new int [numOfCells << 2];
 	double *posi = new double [numOfPoints * 3];
@@ -47,6 +50,12 @@ lcs::Frame::Frame(double timePoint, const char *geometryFile, const char *veloci
 
 	fread(posi, sizeof(double), numOfPoints * 3, fin);
 	fclose(fin);
+
+	/// DEBUG ///
+	//for (int i = 0; i < 30; i++)
+	//	printf("%lf ", posi[i]);
+	//printf("\n");
+
 	fin = fopen(velocityFile, "rb");
 	double *velo = new double [numOfPoints * 3];
 	fread(velo, sizeof(double), numOfPoints * 3, fin);
