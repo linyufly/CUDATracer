@@ -80,7 +80,9 @@ EXTRA_LDFLAGS   ?=
 
 # CUDA code generation flags
 # GENCODE_SM20    := -gencode arch=compute_20,code=sm_20
-GENCODE_SM30    := -gencode arch=compute_30,code=sm_30 -gencode arch=compute_35,code=sm_35
+# GENCODE_SM30    := -gencode arch=compute_30,code=sm_30 -gencode arch=compute_35,code=sm_35
+GENCODE_SM30	:= -gencode arch=compute_35,code=sm_35
+# GENCODE_SM30	:= -gencode arch=compute_30,code=sm_30
 GENCODE_FLAGS   := $(GENCODE_SM10) $(GENCODE_SM20) $(GENCODE_SM30)
 
 # OS-specific build flags

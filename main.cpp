@@ -16,8 +16,10 @@ Last Update	:	January 31st, 2013
 
 #define MAX_THREADS_PER_SM 512
 #define MAX_THREADS_PER_BLOCK 256
-#define MAX_SHARED_MEMORY_PER_SM 48000
+#define MAX_SHARED_MEMORY_PER_SM 49000
 #define WARP_SIZE 32
+
+#define MAX_MULTIPLE 16
 
 extern "C" void TetrahedronBlockIntersection(double *vertexPositions,
 					int *tetrahedralConnectivities,
@@ -46,7 +48,7 @@ extern "C" void BlockedTracingOfRK4(double *globalVertexPositions, int *globalTe
 				int *activeBlockList, // Map active block ID to interesting block ID
 				int *blockOfGroups, int *offsetInBlocks, int *stage, double *lastPosition, double *k1, double *k2, double *k3, double *pastTimes,
 				double *placesOfInterest, int *startOffsetInParticle, int *blockedActiveParticleIDList, int *cellLocations, int *exitCells,
-				double startTime, double endTime, double timeStep, double epsilon, int numOfActiveBlocks, int blockSize, int sharedMemorySize);
+				double startTime, double endTime, double timeStep, double epsilon, int numOfActiveBlocks, int blockSize, int sharedMemorySize, int multiple);
 
 extern "C" void GetNumOfGroupsForBlocks(int *startOffsetInParticles, int *numOfGroupsForBlocks, int numOfActiveBlocks, int groupSize);
 
@@ -351,6 +353,10 @@ void PrepareTetrahedronBlockIntersectionQueries() {
 		if (localMinY < globalMinY) localMinY = globalMinY;
 		if (localMinZ < globalMinZ) localMinZ = globalMinZ;
 
+		if (localMaxX > globalMaxX) localMaxX = globalMaxX;
+		if (localMaxY > globalMaxY) localMaxY = globalMaxY;
+		if (localMaxZ > globalMaxZ) localMaxZ = globalMaxZ;
+
 		xLeftBound[i] = (int)((localMinX - globalMinX) / blockSize);
 		xRightBound[i] = (int)((localMaxX - globalMinX) / blockSize);
 		yLeftBound[i] = (int)((localMinY - globalMinY) / blockSize);
@@ -376,6 +382,14 @@ void PrepareTetrahedronBlockIntersectionQueries() {
 				for (int zItr = zLeftBound[i]; zItr <= zRightBound[i]; zItr++) {
 					queryTetrahedron[currQuery] = i;
 					queryBlock[currQuery] = GetBlockID(xItr, yItr, zItr);
+					
+					/// DEBUG ///
+					if (queryBlock[currQuery] < 0 || queryBlock[currQuery] >= numOfBlocksInX * numOfBlocksInY * numOfBlocksInZ) {
+						printf("incorrect block = %d\n", queryBlock[currQuery]);
+						printf("%d\n", numOfBlocksInX * numOfBlocksInY * numOfBlocksInZ);
+						lcs::Error("incorrect block");
+					}
+
 					currQuery++;
 				}
 
@@ -556,6 +570,13 @@ void DivisionProcess() {
 		if (queryResults[i]) {
 			int tetrahedronID = queryTetrahedron[i];
 			int blockID = interestingBlockMap[queryBlock[i]];
+
+			/// DEBUG ///
+			if (blockID < 0 || blockID >= numOfInterestingBlocks) {
+				printf("blockID = %d\n", blockID);
+				lcs::Error("incorrect blockID");
+			}
+
 			int positionInHashMap = startOffsetsInLocalIDMap[tetrahedronID] + topOfCells[tetrahedronID];
 			blocksOfTets[positionInHashMap] = queryBlock[i];
 			localIDsOfTets[positionInHashMap] = heads[blockID];
@@ -563,6 +584,7 @@ void DivisionProcess() {
 
 			cellsInBlock[blockID][heads[blockID]++] = tetrahedronID;
 		}
+
 	delete [] heads;
 
 	/// DEBUG ///
@@ -649,8 +671,9 @@ void DivisionProcess() {
 		// Mark whether the block can fit into the shared memory
 		int currentBlockMemoryCost = blocks[i]->EvaluateNumOfBytes();
 
-		if (currentBlockMemoryCost <= configure->GetSharedMemoryKilobytes() * 1024) smallEnoughBlocks++;
-		if (currentBlockMemoryCost > maxSharedMemoryRequired) maxSharedMemoryRequired = currentBlockMemoryCost;
+		//if (currentBlockMemoryCost <= configure->GetSharedMemoryKilobytes() * 1024) smallEnoughBlocks++;
+		if (currentBlockMemoryCost <= MAX_SHARED_MEMORY_PER_SM) smallEnoughBlocks++;
+		if (currentBlockMemoryCost <= MAX_SHARED_MEMORY_PER_SM && currentBlockMemoryCost > maxSharedMemoryRequired) maxSharedMemoryRequired = currentBlockMemoryCost;
 
 		//if (currentBlockMemoryCost <= configure->GetSharedMemoryKilobytes() * 1024) {
 		//	smallEnoughBlocks++;
@@ -1079,11 +1102,11 @@ void BigBlockInitializationForVelocities(int currStartVIndex) {
 /// DEBUG ///
 double kernelSum;
 
-void LaunchBlockedTracingKernel(int numOfWorkGroups, double beginTime, double finishTime, int blockSize, int sharedMemorySize) {
+void LaunchBlockedTracingKernel(int numOfWorkGroups, double beginTime, double finishTime, int blockSize, int sharedMemorySize, int multiple) {
 	int starTime;
 
-	printf("Start to use GPU to process blocked tracing ...\n");
-	printf("\n");
+	//printf("Start to use GPU to process blocked tracing ...\n");
+	//printf("\n");
 
 	double startTime = lcs::GetCurrentTimeInSeconds();
 
@@ -1092,15 +1115,15 @@ void LaunchBlockedTracingKernel(int numOfWorkGroups, double beginTime, double fi
 				d_localConnectivities, d_localLinks, d_globalCellIDs, d_globalPointIDs, d_activeBlocks, // Map active block ID to interesting block ID
 				d_blockOfGroups, d_offsetInBlocks, d_stages, d_lastPositionForRK4, d_k1ForRK4, d_k2ForRK4, d_k3ForRK4, d_pastTimes, d_placesOfInterest,
 				d_startOffsetInParticles, d_blockedActiveParticles, d_localTetIDs, d_exitCells,
-				beginTime, finishTime, configure->GetTimeStep(), configure->GetEpsilon(), numOfWorkGroups, blockSize, sharedMemorySize);
+				beginTime, finishTime, configure->GetTimeStep(), configure->GetEpsilon(), numOfWorkGroups, blockSize, sharedMemorySize, multiple);
 
 	double endTime = lcs::GetCurrentTimeInSeconds();
 
 	/// DEBUG ///
 	kernelSum += endTime - startTime;
 
-	printf("The GPU Kernel for blocked tracing cost %lf sec.\n", endTime - startTime);
-	printf("\n");
+	//printf("The GPU Kernel for blocked tracing cost %lf sec.\n", endTime - startTime);
+	//printf("\n");
 }
 
 void InitializeInitialActiveParticles() {
@@ -1215,7 +1238,7 @@ int CollectActiveParticlesForNewRun(int *d_oldActiveParticles, int *d_newActiveP
 	sum = ExclusiveScanForInt(d_exclusiveScanArrayForInt, length);
 
 	/// DEBUG ///
-	printf("CollectActiveParticlesForNewRun(): length = %d, sum = %d\n", length, sum);
+	//printf("CollectActiveParticlesForNewRun(): length = %d, sum = %d\n", length, sum);
 
 	// Compaction
 	CollectActiveParticles2(d_exitCells, d_oldActiveParticles, d_exclusiveScanArrayForInt, d_newActiveParticles, length);
@@ -1234,11 +1257,11 @@ void InitializeInterestingBlockMarks() {
 
 int RedistributeParticles(int *d_activeParticles, int numOfActiveParticles, int iBMCount, int numOfStages) {
 	/// DEBUG ///
-	err = cudaDeviceSynchronize();
-	printf("Before collect blocks Kernel, err = %d\n", err);
+	//err = cudaDeviceSynchronize();
+	//printf("Before collect blocks Kernel, err = %d\n", err);
 
 	/// DEBUG ///
-	printf("iBMCount = %d\n", iBMCount);
+	//printf("iBMCount = %d\n", iBMCount);
 
 	// Intialize d_numOfActiveBlocks
 	err = cudaMemset(d_numOfActiveBlocks, 0, sizeof(int));
@@ -1259,7 +1282,7 @@ int RedistributeParticles(int *d_activeParticles, int numOfActiveParticles, int 
 	if (err) lcs::Error("Fail to read d_numOfActiveBlocks");
 
 	/// DEBUG ///
-	printf("numOfActiveBlocks = %d\n", numOfActiveBlocks);
+	//printf("numOfActiveBlocks = %d\n", numOfActiveBlocks);
 
 	// Get the number of particles by stage in blocks
 	err = cudaMemset(d_numOfParticlesByStageInBlocks, 0, numOfActiveBlocks * numOfStages * sizeof(int));
@@ -1273,7 +1296,7 @@ int RedistributeParticles(int *d_activeParticles, int numOfActiveParticles, int 
 	sum = ExclusiveScanForInt(d_numOfParticlesByStageInBlocks, numOfActiveBlocks * numOfStages);
 
 	/// DEBUG ///
-	printf("sum = %d\n", sum);
+	//printf("sum = %d\n", sum);
 
 	// Collect particles to blocks
 	CollectParticlesToBlocks(d_numOfParticlesByStageInBlocks, // Now it is a prefix sum array.
@@ -1287,9 +1310,9 @@ int RedistributeParticles(int *d_activeParticles, int numOfActiveParticles, int 
 
 void GetStartOffsetInParticles(int numOfActiveBlocks, int numOfActiveParticles, int maxNumOfStages) {
 	/// DEBUG ///
-	printf("In GetStartOffsetInParticles()\n");
-	printf("numOfActiveBlocks = %d\n", numOfActiveBlocks);
-	printf("numOfActiveParticles = %d\n", numOfActiveParticles);
+	//printf("In GetStartOffsetInParticles()\n");
+	//printf("numOfActiveBlocks = %d\n", numOfActiveBlocks);
+	//printf("numOfActiveParticles = %d\n", numOfActiveParticles);
 
 	err = cudaMemcpy(d_startOffsetInParticles + numOfActiveBlocks, &numOfActiveParticles, sizeof(int), cudaMemcpyHostToDevice);
 	if (err) lcs::Error("Fail to write to d_startOffsetInParticles");
@@ -1297,9 +1320,9 @@ void GetStartOffsetInParticles(int numOfActiveBlocks, int numOfActiveParticles, 
 	CollectEveryKElement(d_numOfParticlesByStageInBlocks, d_startOffsetInParticles, maxNumOfStages, numOfActiveBlocks);
 }
 
-int AssignWorkGroups(int numOfActiveBlocks, int tracingBlockSize) {
+int AssignWorkGroups(int numOfActiveBlocks, int tracingBlockSize, int multiple) {
 	// Get numOfGroupsForBlocks
-	GetNumOfGroupsForBlocks(d_startOffsetInParticles, d_numOfGroupsForBlocks, numOfActiveBlocks, tracingBlockSize);
+	GetNumOfGroupsForBlocks(d_startOffsetInParticles, d_numOfGroupsForBlocks, numOfActiveBlocks, tracingBlockSize * multiple);
 
 	// Exclusive scan of numOfGroupsForBlocks
 	int sum;
@@ -1316,7 +1339,7 @@ int AssignWorkGroups(int numOfActiveBlocks, int tracingBlockSize) {
 	return sum;
 }
 
-void CalculateBlockSizeAndSharedMemorySizeForTracingKernel(double averageParticlesInBlock, int &tracingBlockSize, int &tracingSharedMemorySize) {
+void CalculateBlockSizeAndSharedMemorySizeForTracingKernel(double averageParticlesInBlock, int &tracingBlockSize, int &tracingSharedMemorySize, int &multiple) {
 	tracingBlockSize = (int)(averageParticlesInBlock / WARP_SIZE) * WARP_SIZE;
 	if (lcs::Sign(averageParticlesInBlock - tracingBlockSize, configure->GetEpsilon()) > 0)
 		tracingBlockSize += WARP_SIZE;
@@ -1325,12 +1348,18 @@ void CalculateBlockSizeAndSharedMemorySizeForTracingKernel(double averageParticl
 
 	if (tracingBlockSize < WARP_SIZE)
 		tracingBlockSize = WARP_SIZE;
+
+	multiple = (int)(averageParticlesInBlock / tracingBlockSize);
+	//multiple++;
+	if (!multiple) multiple = 1;
+	if (multiple > MAX_MULTIPLE) multiple = MAX_MULTIPLE;
+
 	int maxNumOfBlocks = MAX_THREADS_PER_SM / tracingBlockSize;
 
 	tracingSharedMemorySize = MAX_SHARED_MEMORY_PER_SM / maxNumOfBlocks;
 	if (tracingSharedMemorySize > maxSharedMemoryRequired)
 		tracingSharedMemorySize = maxSharedMemoryRequired;
-	printf("tracingBlockSize = %d, tracingSharedMemorySize = %d\n", tracingBlockSize, tracingSharedMemorySize);
+	//printf("tracingBlockSize = %d, tracingSharedMemorySize = %d, multiple = %d\n", tracingBlockSize, tracingSharedMemorySize, multiple);
 }
 
 /// DEBUG ///
@@ -1424,9 +1453,9 @@ void Tracing() {
 		int lastNumOfActiveParticles;
 
 		lastNumOfActiveParticles = CollectActiveParticlesForNewInterval(d_activeParticles[currActiveParticleArray]);
-		
+
 		/// DEBUG ///
-		printf("CollectActiveParticlesForNewInterval done.\n");
+		//printf("numOfActiveParticles = %d\n", lastNumOfActiveParticles);
 
 		// Load end velocities
 		LoadVelocities(velocities[1 - currStartVIndex], d_velocities[1 - currStartVIndex], frameIdx + 1);
@@ -1435,7 +1464,7 @@ void Tracing() {
 		BigBlockInitializationForVelocities(currStartVIndex);
 
 		/// DEBUG ///
-		printf("BigBlockInitializationForVelocities done.\n");
+		//printf("BigBlockInitializationForVelocities done.\n");
 
 		while (true) {
 			// Get active particles
@@ -1448,7 +1477,7 @@ void Tracing() {
 									       lastNumOfActiveParticles);
 
 			/// DEBUG ///
-			printf("CollectActiveParticlesForNewRun done.\n");
+			//printf("CollectActiveParticlesForNewRun done.\n");
 
 			lastNumOfActiveParticles = numOfActiveParticles;
 
@@ -1461,21 +1490,21 @@ void Tracing() {
 								      numOfActiveParticles, iBMCount++, maxNumOfStages);	
 
 			/// DEBUG ///
-			printf("RedistributeParticles done.\n");
+			//printf("RedistributeParticles done.\n");
 
 			double averageParticlesInBlock = (double)numOfActiveParticles / numOfActiveBlocks;
-			printf("numOfActiveParticles / numOfActiveBlocks = %lf\n", averageParticlesInBlock);
+			//printf("numOfActiveParticles / numOfActiveBlocks = %lf\n", averageParticlesInBlock);
 
 			GetStartOffsetInParticles(numOfActiveBlocks, numOfActiveParticles, maxNumOfStages);
 
-			int tracingBlockSize, tracingSharedMemorySize;
-			CalculateBlockSizeAndSharedMemorySizeForTracingKernel(averageParticlesInBlock, tracingBlockSize, tracingSharedMemorySize);
+			int tracingBlockSize, tracingSharedMemorySize, multiple;
+			CalculateBlockSizeAndSharedMemorySizeForTracingKernel(averageParticlesInBlock, tracingBlockSize, tracingSharedMemorySize, multiple);
 
-			int numOfWorkGroups = AssignWorkGroups(numOfActiveBlocks, tracingBlockSize);
+			int numOfWorkGroups = AssignWorkGroups(numOfActiveBlocks, tracingBlockSize, multiple);
 
-			printf("numOfWorkGroups = %d\n", numOfWorkGroups);	
+			//printf("numOfWorkGroups = %d\n", numOfWorkGroups);	
 
-			LaunchBlockedTracingKernel(numOfWorkGroups, currTime, currTime + interval, tracingBlockSize, tracingSharedMemorySize);
+			LaunchBlockedTracingKernel(numOfWorkGroups, currTime, currTime + interval, tracingBlockSize, tracingSharedMemorySize, multiple);
 		}
 
 		int endTime = clock();

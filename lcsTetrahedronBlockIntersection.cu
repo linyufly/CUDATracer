@@ -288,7 +288,9 @@ __host__ void TetrahedronBlockIntersection(double *vertexPositions,
 	TetrahedronBlockIntersectionKernel<<<dimGrid, dimBlock>>>(vertexPositions, tetrahedralConnectivities, queryTetrahedron,
 								queryBlock, queryResult, numOfBlocksInY, numOfBlocksInZ, globalMinX, globalMinY, globalMinZ,
 								blockSize, epsilon, numOfQueries, marginRatio);
+
 	cudaError_t err = cudaDeviceSynchronize();
+
 	if (err) {
 		printf("Fail to finish intersection kernel\n");
 		exit(0);

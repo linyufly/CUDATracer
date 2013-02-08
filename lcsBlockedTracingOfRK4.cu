@@ -133,8 +133,9 @@ __global__ void BlockedTracingKernelOfRK4(double *globalVertexPositions,
 
 					double startTime, double endTime, double timeStep, double epsilon,
 
-					int sharedMemorySize) {
+					int sharedMemorySize, int multiple) {
 	__shared__ extern char sharedMemory[];
+	//char *sharedMemory;
 
 	// Get work group ID
 	int groupID = blockIdx.x;
@@ -203,168 +204,174 @@ __global__ void BlockedTracingKernelOfRK4(double *globalVertexPositions,
 	__syncthreads();
 	
 	int numOfActiveParticles = startOffsetInParticle[activeBlockID + 1] - startOffsetInParticle[activeBlockID];
+	int offset = offsetInBlocks[groupID] * numOfThreads * multiple;
 
-	int arrayIdx = offsetInBlocks[groupID] * numOfThreads + localID;
+	for (int i = localID; i < numOfThreads * multiple; i += numOfThreads) {
+		//int arrayIdx = offsetInBlocks[groupID] * numOfThreads +  localID;
+		int arrayIdx = offset + i;
 
-	if (arrayIdx < numOfActiveParticles) {
-		// activeParticleID here means the initial active particle ID
-		arrayIdx += startOffsetInParticle[activeBlockID];
-		int activeParticleID = blockedActiveParticleIDList[arrayIdx];
+		if (arrayIdx < numOfActiveParticles) {
+			// activeParticleID here means the initial active particle ID
+			arrayIdx += startOffsetInParticle[activeBlockID];
+			int activeParticleID = blockedActiveParticleIDList[arrayIdx];
 
-		// Initialize the particle status
-		int currStage = stage[activeParticleID];
-		int currCell = cellLocations[activeParticleID];
+			// Initialize the particle status
+			int currStage = stage[activeParticleID];
+			int currCell = cellLocations[activeParticleID];
 
-		double currTime = pastTimes[activeParticleID];
+			double currTime = pastTimes[activeParticleID];
 
-		double currLastPosition[3];
-		currLastPosition[0] = lastPosition[activeParticleID * 3];
-		currLastPosition[1] = lastPosition[activeParticleID * 3 + 1];
-		currLastPosition[2] = lastPosition[activeParticleID * 3 + 2];
-		double currK1[3], currK2[3], currK3[3], currK4[3];
-		if (currStage > 0) {
-			currK1[0] = k1[activeParticleID * 3];
-			currK1[1] = k1[activeParticleID * 3 + 1];
-			currK1[2] = k1[activeParticleID * 3 + 2];
-		}
-		if (currStage > 1) {
-			currK2[0] = k2[activeParticleID * 3];
-			currK2[1] = k2[activeParticleID * 3 + 1];
-			currK2[2] = k2[activeParticleID * 3 + 2];
-		}
-		if (currStage > 2) {
-			currK3[0] = k3[activeParticleID * 3];
-			currK3[1] = k3[activeParticleID * 3 + 1];
-			currK3[2] = k3[activeParticleID * 3 + 2];
-		}
-
-		// At least one loop is executed.
-		while (true) {
-			double placeOfInterest[3];
-			placeOfInterest[0] = currLastPosition[0];
-			placeOfInterest[1] = currLastPosition[1];
-			placeOfInterest[2] = currLastPosition[2];
-			switch (currStage) {
-			case 1: {
-				placeOfInterest[0] += 0.5 * currK1[0];
-				placeOfInterest[1] += 0.5 * currK1[1];
-				placeOfInterest[2] += 0.5 * currK1[2];
-					} break;
-			case 2: {
-				placeOfInterest[0] += 0.5 * currK2[0];
-				placeOfInterest[1] += 0.5 * currK2[1];
-				placeOfInterest[2] += 0.5 * currK2[2];
-					} break;
-			case 3: {
-				placeOfInterest[0] += currK3[0];
-				placeOfInterest[1] += currK3[1];
-				placeOfInterest[2] += currK3[2];
-					} break;
+			double currLastPosition[3];
+			currLastPosition[0] = lastPosition[activeParticleID * 3];
+			currLastPosition[1] = lastPosition[activeParticleID * 3 + 1];
+			currLastPosition[2] = lastPosition[activeParticleID * 3 + 2];
+			double currK1[3], currK2[3], currK3[3], currK4[3];
+			if (currStage > 0) {
+				currK1[0] = k1[activeParticleID * 3];
+				currK1[1] = k1[activeParticleID * 3 + 1];
+				currK1[2] = k1[activeParticleID * 3 + 2];
+			}
+			if (currStage > 1) {
+				currK2[0] = k2[activeParticleID * 3];
+				currK2[1] = k2[activeParticleID * 3 + 1];
+				currK2[2] = k2[activeParticleID * 3 + 2];
+			}
+			if (currStage > 2) {
+				currK3[0] = k3[activeParticleID * 3];
+				currK3[1] = k3[activeParticleID * 3 + 1];
+				currK3[2] = k3[activeParticleID * 3 + 2];
 			}
 
-			double coordinates[4];
+			// At least one loop is executed.
+			while (true) {
+				double placeOfInterest[3];
+				placeOfInterest[0] = currLastPosition[0];
+				placeOfInterest[1] = currLastPosition[1];
+				placeOfInterest[2] = currLastPosition[2];
+				switch (currStage) {
+				case 1: {
+					placeOfInterest[0] += 0.5 * currK1[0];
+					placeOfInterest[1] += 0.5 * currK1[1];
+					placeOfInterest[2] += 0.5 * currK1[2];
+					} break;
+				case 2: {
+					placeOfInterest[0] += 0.5 * currK2[0];
+					placeOfInterest[1] += 0.5 * currK2[1];
+					placeOfInterest[2] += 0.5 * currK2[2];
+					} break;
+				case 3: {
+					placeOfInterest[0] += currK3[0];
+					placeOfInterest[1] += currK3[1];
+					placeOfInterest[2] += currK3[2];
+					} break;
+				}
 
-			int nextCell = FindCell(placeOfInterest, connectivities, links, vertexPositions, epsilon, currCell, coordinates);
+				double coordinates[4];
 
-			if (nextCell == -1 || currTime >= endTime) {
-				// Find the next cell globally
-				int globalCellID = blockedGlobalCellIDs[startCell + currCell];
-				int nextGlobalCell;
+				int nextCell = FindCell(placeOfInterest, connectivities, links, vertexPositions, epsilon, currCell, coordinates);
+
+				if (nextCell == -1 || currTime >= endTime) {
+					// Find the next cell globally
+					int globalCellID = blockedGlobalCellIDs[startCell + currCell];
+					int nextGlobalCell;
 				
-				if (nextCell != -1)
-					nextGlobalCell = blockedGlobalCellIDs[startCell + nextCell];
-				else
-					nextGlobalCell = FindCell(placeOfInterest, globalTetrahedralConnectivities,
-								globalTetrahedralLinks, globalVertexPositions,
-								epsilon, globalCellID, coordinates);
+					if (nextCell != -1)
+						nextGlobalCell = blockedGlobalCellIDs[startCell + nextCell];
+					else
+						nextGlobalCell = FindCell(placeOfInterest, globalTetrahedralConnectivities,
+									globalTetrahedralLinks, globalVertexPositions,
+									epsilon, globalCellID, coordinates);
 
-				if (currTime >= endTime && nextGlobalCell != -1) nextGlobalCell = -2 - nextGlobalCell;
+					if (currTime >= endTime && nextGlobalCell != -1) nextGlobalCell = -2 - nextGlobalCell;
 
-				pastTimes[activeParticleID] = currTime;
+					pastTimes[activeParticleID] = currTime;
 
-				stage[activeParticleID] = currStage;
+					stage[activeParticleID] = currStage;
 
-				lastPosition[activeParticleID * 3] = currLastPosition[0];
-				lastPosition[activeParticleID * 3 + 1] = currLastPosition[1];
-				lastPosition[activeParticleID * 3 + 2] = currLastPosition[2];
+					lastPosition[activeParticleID * 3] = currLastPosition[0];
+					lastPosition[activeParticleID * 3 + 1] = currLastPosition[1];
+					lastPosition[activeParticleID * 3 + 2] = currLastPosition[2];
 
-				placesOfInterest[activeParticleID * 3] = placeOfInterest[0];
-				placesOfInterest[activeParticleID * 3 + 1] = placeOfInterest[1];
-				placesOfInterest[activeParticleID * 3 + 2] = placeOfInterest[2];
+					placesOfInterest[activeParticleID * 3] = placeOfInterest[0];
+					placesOfInterest[activeParticleID * 3 + 1] = placeOfInterest[1];
+					placesOfInterest[activeParticleID * 3 + 2] = placeOfInterest[2];
 
-				exitCells[activeParticleID] = nextGlobalCell;
+					exitCells[activeParticleID] = nextGlobalCell;
 		
-				if (currStage > 0) {
-					k1[activeParticleID * 3] = currK1[0];
-					k1[activeParticleID * 3 + 1] = currK1[1];
-					k1[activeParticleID * 3 + 2] = currK1[2];
+					if (currStage > 0) {
+						k1[activeParticleID * 3] = currK1[0];
+						k1[activeParticleID * 3 + 1] = currK1[1];
+						k1[activeParticleID * 3 + 2] = currK1[2];
+					}
+					if (currStage > 1) {
+						k2[activeParticleID * 3] = currK2[0];
+						k2[activeParticleID * 3 + 1] = currK2[1];
+						k2[activeParticleID * 3 + 2] = currK2[2];
+					}
+					if (currStage > 2) {
+						k3[activeParticleID * 3] = currK3[0];
+						k3[activeParticleID * 3 + 1] = currK3[1];
+						k3[activeParticleID * 3 + 2] = currK3[2];
+					}
+					break;
 				}
-				if (currStage > 1) {
-					k2[activeParticleID * 3] = currK2[0];
-					k2[activeParticleID * 3 + 1] = currK2[1];
-					k2[activeParticleID * 3 + 2] = currK2[2];
+
+				currCell = nextCell;
+
+				double exactTime = currTime;
+				switch (currStage) {
+				case 0: break;
+				case 1:
+				case 2: exactTime += timeStep * 0.5; break;
+				case 3: exactTime += timeStep; break;
 				}
-				if (currStage > 2) {
-					k3[activeParticleID * 3] = currK3[0];
-					k3[activeParticleID * 3 + 1] = currK3[1];
-					k3[activeParticleID * 3 + 2] = currK3[2];
+
+				double alpha = (endTime - exactTime) / (endTime - startTime);
+				double beta = 1 - alpha;
+
+				double vecX[4], vecY[4], vecZ[4];
+
+				for (int i = 0; i < 4; i++) {
+					int pointID = connectivities[(nextCell << 2) | i];
+					vecX[i] = startVelocities[pointID * 3] * alpha + endVelocities[pointID * 3] * beta;
+					vecY[i] = startVelocities[pointID * 3 + 1] * alpha + endVelocities[pointID * 3 + 1] * beta;
+					vecZ[i] = startVelocities[pointID * 3 + 2] * alpha + endVelocities[pointID * 3 + 2] * beta;
 				}
-				break;
+
+				double *currK;
+				switch (currStage) {
+				case 0: currK = currK1; break;
+				case 1: currK = currK2; break;
+				case 2: currK = currK3; break;
+				case 3: currK = currK4; break;
+				}
+
+				currK[0] = currK[1] = currK[2] = 0;
+
+				for (int i = 0; i < 4; i++) {
+					currK[0] += vecX[i] * coordinates[i];
+					currK[1] += vecY[i] * coordinates[i];
+					currK[2] += vecZ[i] * coordinates[i];
+				}
+
+				currK[0] *= timeStep;
+				currK[1] *= timeStep;
+				currK[2] *= timeStep;
+
+				if (currStage == 3) {
+					currTime += timeStep;
+
+					for (int i = 0; i < 3; i++)
+						currLastPosition[i] += (currK1[i] + 2 * currK2[i] + 2 * currK3[i] + currK4[i]) / 6;
+
+					currStage = 0;
+				} else
+					currStage++;
 			}
+		} else break;
 
-			currCell = nextCell;
-
-			double exactTime = currTime;
-			switch (currStage) {
-			case 0: break;
-			case 1:
-			case 2: exactTime += timeStep * 0.5; break;
-			case 3: exactTime += timeStep; break;
-			}
-
-			double alpha = (endTime - exactTime) / (endTime - startTime);
-			double beta = 1 - alpha;
-
-			double vecX[4], vecY[4], vecZ[4];
-
-			for (int i = 0; i < 4; i++) {
-				int pointID = connectivities[(nextCell << 2) | i];
-				vecX[i] = startVelocities[pointID * 3] * alpha + endVelocities[pointID * 3] * beta;
-				vecY[i] = startVelocities[pointID * 3 + 1] * alpha + endVelocities[pointID * 3 + 1] * beta;
-				vecZ[i] = startVelocities[pointID * 3 + 2] * alpha + endVelocities[pointID * 3 + 2] * beta;
-			}
-
-			double *currK;
-			switch (currStage) {
-			case 0: currK = currK1; break;
-			case 1: currK = currK2; break;
-			case 2: currK = currK3; break;
-			case 3: currK = currK4; break;
-			}
-
-			currK[0] = currK[1] = currK[2] = 0;
-
-			for (int i = 0; i < 4; i++) {
-				currK[0] += vecX[i] * coordinates[i];
-				currK[1] += vecY[i] * coordinates[i];
-				currK[2] += vecZ[i] * coordinates[i];
-			}
-
-			currK[0] *= timeStep;
-			currK[1] *= timeStep;
-			currK[2] *= timeStep;
-
-			if (currStage == 3) {
-				currTime += timeStep;
-
-				for (int i = 0; i < 3; i++)
-					currLastPosition[i] += (currK1[i] + 2 * currK2[i] + 2 * currK3[i] + currK4[i]) / 6;
-
-				currStage = 0;
-			} else
-				currStage++;
-		}
 	}
+
 }
 
 extern "C"
@@ -406,7 +413,7 @@ void BlockedTracingOfRK4(double *globalVertexPositions,
 
 			double startTime, double endTime, double timeStep, double epsilon, int numOfActiveBlocks,
 
-			int blockSize, int sharedMemorySize) {
+			int blockSize, int sharedMemorySize, int multiple) {
 	dim3 dimBlock(blockSize, 1, 1);
 	dim3 dimGrid(numOfActiveBlocks, 1, 1);
 
@@ -448,7 +455,7 @@ void BlockedTracingOfRK4(double *globalVertexPositions,
 
 					startTime, endTime, timeStep, epsilon,
 
-					sharedMemorySize);
+					sharedMemorySize, multiple);
 
 	cudaError_t err = cudaDeviceSynchronize();
 

@@ -95,7 +95,7 @@ int ExclusiveScanForInt(int *d_arr, int length) {
 	int d_step = 1;
 
 	/// DEBUG ///
-	printf("length = %d\n", length);
+	//printf("length = %d\n", length);
 
 	dim3 dimBlock(BLOCK_SIZE, 1, 1);
 	dim3 dimGrid(1, 1, 1);
