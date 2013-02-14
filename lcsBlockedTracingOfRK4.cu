@@ -1,10 +1,13 @@
 /*****************************************************
 File		:	lcsBlockedTracingOfRK4.cu
 Author		:	Mingcheng Chen
-Last Update	:	January 31st, 2013
+Last Update	:	February 14th, 2013
 ******************************************************/
 
 #include <stdio.h>
+
+#define MINGCHENG_CHEN
+
 
 __device__ inline double DeterminantThree(double *a) {
 	// a[0] a[1] a[2]
@@ -15,6 +18,50 @@ __device__ inline double DeterminantThree(double *a) {
 	return a[0] * (a[4] * a[8] - a[5] * a[7]) + a[1] * (a[5] * a[6] - a[3] * a[8]) + a[2] * (a[3] * a[7] - a[4] * a[6]);
 }
 
+#ifndef MINGCHENG_CHEN
+__device__ void CalculateNaturalCoordinates(double X, double Y, double Z, double *tetX, double *tetY, double *tetZ, double *coordinates) {
+	double x0 = tetX[0];
+	double y0 = tetY[0];
+	double z0 = tetZ[0];
+
+	double x1 = tetX[1];
+	double y1 = tetY[1];
+	double z1 = tetZ[1];
+
+	double x2 = tetX[2];
+	double y2 = tetY[2];
+	double z2 = tetZ[2];
+
+	double x3 = tetX[3];
+	double y3 = tetY[3];
+	double z3 = tetZ[3];
+
+	// Determinant of mapping from natural to physical coordinates of test element
+	double V = (x1 - x0) * ((y2 - y0) * (z3 - z0) - (z2 - z0) * (y3 - y0)) +
+		(x2 - x0) * ((y0 - y1) * (z3 - z0) - (z0 - z1) * (y3 - y0)) +
+		(x3 - x0) * ((y1 - y0) * (z2 - z0) - (z1 - z0) * (y2 - y0));	
+
+	// Natural coordinates of point to be interpolated
+	coordinates[1] = ((((z3 - z0) * (y2 - y3) - (z2 - z3) * (y3 - y0)) * (X - x0)) + 
+			  (((x3 - x0) * (z2 - z3) - (x2 - x3) * (z3 - z0)) * (Y - y0)) +
+			  (((y3 - y0) * (x2 - x3) - (y2 - y3) * (x3 - x0)) * (Z - z0))
+                         ) / V;
+			
+	coordinates[2] = ((((z3 - z0) * (y0 - y1) - (z0 - z1) * (y3 - y0)) * (X - x0)) +
+			  (((x3 - x0) * (z0 - z1) - (x0 - x1) * (z3 - z0)) * (Y - y0)) +
+			  (((y3 - y0) * (x0 - x1) - (y0 - y1) * (x3 - x0)) * (Z - z0))
+			 ) / V;
+			
+	coordinates[3] = ((((z1 - z2) * (y0 - y1) - (z0 - z1) * (y1 - y2)) * (X - x0)) +
+			  (((x1 - x2) * (z0 - z1) - (x0 - x1) * (z1 - z2)) * (Y - y0)) +
+			  (((y1 - y2) * (x0 - x1) - (y0 - y1) * (x1 - x2)) * (Z - z0))
+			 ) / V;
+
+	coordinates[0] = 1.0 - coordinates[1] - coordinates[2] - coordinates[3];		
+}
+#endif
+
+#ifdef MINGCHENG_CHEN
 __device__ inline void CalculateNaturalCoordinates(double X, double Y, double Z,
 					double *tetX, double *tetY, double *tetZ, double *coordinates) {
 	X -= tetX[0];
@@ -65,6 +112,7 @@ __device__ inline void CalculateNaturalCoordinates(double X, double Y, double Z,
 
 	coordinates[0] = 1.0 - coordinates[1] - coordinates[2] - coordinates[3];
 }
+#endif
 
 __device__ inline int FindCell(double *particle, int *connectivities, int *links, double *vertexPositions,
 			double epsilon, int guess, double *coordinates) {
@@ -95,6 +143,8 @@ __device__ inline int FindCell(double *particle, int *connectivities, int *links
 	return guess;
 }
 
+__constant__ void *pointers[10];
+
 __global__ void BlockedTracingKernelOfRK4(double *globalVertexPositions,
 					int *globalTetrahedralConnectivities,
 					int *globalTetrahedralLinks,
@@ -109,7 +159,6 @@ __global__ void BlockedTracingKernelOfRK4(double *globalVertexPositions,
 					int *blockedLocalConnectivities,
 					int *blockedLocalLinks,
 					int *blockedGlobalCellIDs,
-					int *blockedGlobalPointIDs,
 
 					int *activeBlockList, // Map active block ID to interesting block ID
 
@@ -190,6 +239,8 @@ __global__ void BlockedTracingKernelOfRK4(double *globalVertexPositions,
 			connectivities[i] = blockedLocalConnectivities[(startCell << 2) + i];
 			links[i] = blockedLocalLinks[(startCell << 2) + i];
 		}
+
+		//__syncthreads();
 	} else { // This branch fills in the global memory
 		// Initialize vertexPositions, startVelocities and endVelocities
 		vertexPositions = vertexPositionsForBig + startPoint * 3;
@@ -389,7 +440,6 @@ void BlockedTracingOfRK4(double *globalVertexPositions,
 			int *blockedLocalConnectivities,
 			int *blockedLocalLinks,
 			int *blockedGlobalCellIDs,
-			int *blockedGlobalPointIDs,
 
 			int *activeBlockList, // Map active block ID to interesting block ID
 
@@ -417,6 +467,42 @@ void BlockedTracingOfRK4(double *globalVertexPositions,
 	dim3 dimBlock(blockSize, 1, 1);
 	dim3 dimGrid(numOfActiveBlocks, 1, 1);
 
+	int sizeOfPointer = sizeof(void *);
+
+	cudaError_t err;
+/*
+	cudaError_t err = cudaMemcpyToSymbol(pointers, &globalVertexPositions, sizeOfPointer, 0, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(pointers, &globalTetrahedralConnectivities, sizeOfPointer, sizeOfPointer, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(pointers, &globalTetrahedralLinks, sizeOfPointer, sizeOfPointer * 2, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(pointers, &startOffsetInCell, sizeOfPointer, sizeOfPointer * 3, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(pointers, &startOffsetInPoint, sizeOfPointer, sizeOfPointer * 4, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(pointers, &vertexPositionsForBig, sizeOfPointer, sizeOfPointer * 5, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(pointers, &startVelocitiesForBig, sizeOfPointer, sizeOfPointer * 6, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(pointers, &endVelocitiesForBig, sizeOfPointer, sizeOfPointer * 7, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(pointers, &blockedLocalConnectivities, sizeOfPointer, sizeOfPointer * 8, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(pointers, &blockedLocalLinks, sizeOfPointer, sizeOfPointer * 9, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(pointers, &blockedGlobalCellID, sizeOfPointer, sizeOfPointer * 10, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(pointers, &vertexPositionsForBig, sizeOfPointer, sizeOfPointer * 11, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(pointers, &vertexPositionsForBig, sizeOfPointer, sizeOfPointer * 12, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(pointers, &vertexPositionsForBig, sizeOfPointer, sizeOfPointer * 13, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(pointers, &vertexPositionsForBig, sizeOfPointer, sizeOfPointer * 14, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(pointers, &vertexPositionsForBig, sizeOfPointer, sizeOfPointer * 15, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(pointers, &vertexPositionsForBig, sizeOfPointer, sizeOfPointer * 16, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(pointers, &vertexPositionsForBig, sizeOfPointer, sizeOfPointer * 17, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(pointers, &vertexPositionsForBig, sizeOfPointer, sizeOfPointer * 18, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(pointers, &vertexPositionsForBig, sizeOfPointer, sizeOfPointer * 19, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(pointers, &vertexPositionsForBig, sizeOfPointer, sizeOfPointer * 20, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(pointers, &vertexPositionsForBig, sizeOfPointer, sizeOfPointer * 21, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(pointers, &vertexPositionsForBig, sizeOfPointer, sizeOfPointer * 22, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(pointers, &vertexPositionsForBig, sizeOfPointer, sizeOfPointer * 23, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(pointers, &vertexPositionsForBig, sizeOfPointer, sizeOfPointer * 24, cudaMemcpyHostToDevice) |
+*/
+	if (err) {
+		cudaGetErrorString(err);
+		printf("Symbol\n");
+		exit(0);
+	}
+
 	BlockedTracingKernelOfRK4<<<dimGrid, dimBlock, sharedMemorySize>>>(globalVertexPositions,
 					globalTetrahedralConnectivities,
 					globalTetrahedralLinks,
@@ -431,7 +517,6 @@ void BlockedTracingOfRK4(double *globalVertexPositions,
 					blockedLocalConnectivities,
 					blockedLocalLinks,
 					blockedGlobalCellIDs,
-					blockedGlobalPointIDs,
 
 					activeBlockList, // Map active block ID to interesting block ID
 
@@ -457,7 +542,7 @@ void BlockedTracingOfRK4(double *globalVertexPositions,
 
 					sharedMemorySize, multiple);
 
-	cudaError_t err = cudaDeviceSynchronize();
+	err = cudaDeviceSynchronize();
 
 	if (err) {
 		cudaGetErrorString(err);

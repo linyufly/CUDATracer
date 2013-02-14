@@ -1,7 +1,7 @@
 /**********************************************
 File		:	main.cpp
 Author		:	Mingcheng Chen
-Last Update	:	January 31st, 2013
+Last Update	:	February 13th, 2013
 ***********************************************/
 
 #include "lcs.h"
@@ -44,7 +44,7 @@ extern "C" void InitialCellLocation(double *vertexPositions,
 
 extern "C" void BlockedTracingOfRK4(double *globalVertexPositions, int *globalTetrahedralConnectivities,
 				int *globalTetrahedralLinks, int *startOffsetInCell, int *startOffsetInPoint, double *vertexPositionsForBig, double *startVelocitiesForBig,
-				double *endVelocitiesForBig, int *blockedLocalConnectivities, int *blockedLocalLinks, int *blockedGlobalCellIDs, int *blockedGlobalPointIDs,
+				double *endVelocitiesForBig, int *blockedLocalConnectivities, int *blockedLocalLinks, int *blockedGlobalCellIDs,
 				int *activeBlockList, // Map active block ID to interesting block ID
 				int *blockOfGroups, int *offsetInBlocks, int *stage, double *lastPosition, double *k1, double *k2, double *k3, double *pastTimes,
 				double *placesOfInterest, int *startOffsetInParticle, int *blockedActiveParticleIDList, int *cellLocations, int *exitCells,
@@ -95,6 +95,7 @@ extern "C" void BigBlockInitializationForVelocities(double *globalStartVelocitie
 
 const char *configurationFile = "RungeKutta4.conf";
 const char *lastPositionFile = "lcsLastPositions.txt";
+const char *FTLEFile = "lcsFTLEValues.vtk";
 
 lcs::Configure *configure;
 
@@ -108,6 +109,9 @@ double globalMinX, globalMaxX, globalMinY, globalMaxY, globalMinZ, globalMaxZ;
 
 double blockSize;
 int numOfBlocksInX, numOfBlocksInY, numOfBlocksInZ;
+
+// For FTLE calculation
+double *finalPositions;
 
 // For tetrahedron-block intersection
 int *xLeftBound, *xRightBound, *yLeftBound, *yRightBound, *zLeftBound, *zRightBound;
@@ -1112,7 +1116,7 @@ void LaunchBlockedTracingKernel(int numOfWorkGroups, double beginTime, double fi
 
 	BlockedTracingOfRK4(d_vertexPositions, d_tetrahedralConnectivities,
 				d_tetrahedralLinks, d_startOffsetInCell, d_startOffsetInPoint, d_vertexPositionsForBig, d_startVelocitiesForBig, d_endVelocitiesForBig, 
-				d_localConnectivities, d_localLinks, d_globalCellIDs, d_globalPointIDs, d_activeBlocks, // Map active block ID to interesting block ID
+				d_localConnectivities, d_localLinks, d_globalCellIDs, d_activeBlocks, // Map active block ID to interesting block ID
 				d_blockOfGroups, d_offsetInBlocks, d_stages, d_lastPositionForRK4, d_k1ForRK4, d_k2ForRK4, d_k3ForRK4, d_pastTimes, d_placesOfInterest,
 				d_startOffsetInParticles, d_blockedActiveParticles, d_localTetIDs, d_exitCells,
 				beginTime, finishTime, configure->GetTimeStep(), configure->GetEpsilon(), numOfWorkGroups, blockSize, sharedMemorySize, multiple);
@@ -1527,8 +1531,6 @@ void Tracing() {
 }
 
 void GetFinalPositions() {
-	double *finalPositions;
-
 	finalPositions = new double [numOfInitialActiveParticles * 3];
 	
 	switch (lcs::ParticleRecord::GetDataType()) {
@@ -1550,10 +1552,63 @@ void GetFinalPositions() {
 		fprintf(fout, "\n");
 	}
 	fclose(fout);
-
-	delete [] finalPositions;
 }
+/*
+void CalculateFTLE() {	
+	double minX = configure->GetBoundingBoxMinX();
+	double maxX = configure->GetBoundingBoxMaxX();
+	double minY = configure->GetBoundingBoxMinY();
+	double maxY = configure->GetBoundingBoxMaxY();
+	double minZ = configure->GetBoundingBoxMinZ();
+	double maxZ = configure->GetBoundingBoxMaxZ();
 
+	int xRes = configure->GetBoundingBoxXRes();
+	int yRes = configure->GetBoundingBoxYRes();
+	int zRes = configure->GetBoundingBoxZRes();
+
+	double dx = (maxX - minX) / xRes;
+	double dy = (maxY - minY) / yRes;
+	double dz = (maxZ - minZ) / zRes;
+
+	int numOfGridPoints = (xRes + 1) * (yRes + 1) * (zRes + 1);
+	
+	double *flowMap = new double [numOfGridPoints * 3];
+	int idx = -1;
+	for (int i = 0; i <= xRes; i++)
+		for (int j = 0; j <= yRes; j++)
+			for (int k = 0; k <= zRes; k++) {
+				idx++;
+				if (initialCellLocations[idx] == -1) {
+					flowMap[idx * 3] = minX + i * dx;
+					flowMap[idx * 3 + 1] = minY + j * dy;
+					flowMap[idx * 3 + 2] = minZ + k * dz;
+				}
+			}
+	for (int i = 0; i < numOfInitialActiveParticles; i++) {
+		int idx = particleRecords[i]->GetGridPointID();
+		flowMap[idx * 3] = finalPositions[i * 3];
+		flowMap[idx * 3 + 1] = finalPositions[i * 3 + 1];
+		flowMap[idx * 3 + 2] = finalPositions[i * 3 + 2];
+	}
+
+	FILE *fout = fopen(FTLEFile, "w");
+	printf("# vtk DataFile Version 3.0\n");
+	printf("FTLE values\n");
+	printf("ASCII\n");
+	printf("DATASET STRUCTURED_POINTS\n");
+	printf("DIMENSIONS %d %d %d\n", xRes + 1, yRes + 1, zRes + 1);
+	printf("ORIGIN %lf %lf %lf\n", minX, minY, minZ);
+	printf("SPACING %lf %lf %lf\n", dx, dy, dz);
+	idx = -1;
+	for (int i = 0; i <= xRes; i++)
+		for (int j = 0; j <= yRes; j++)
+			for (int k = 0; k <= zRes; k++) {
+				idx++;
+				double 
+			}
+	fclose(fout);	
+}
+*/
 int main() {
 	// Test the system
 	SystemTest();
@@ -1584,6 +1639,9 @@ int main() {
 
 	// Get final positions for initial active particles
 	GetFinalPositions();
+
+	// Calucate FTLE values
+	//CalculateFTLE();
 
 	return 0;
 }
