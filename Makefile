@@ -158,7 +158,7 @@ lcsInitialCellLocation.o: lcsInitialCellLocation.cu
 	$(NVCC) $(NVCCFLAGS) $(EXTRA_NVCCFLAGS) $(GENCODE_FLAGS)  $(INCLUDES) -o $@ -c $<
 
 lcsTetrahedronBlockIntersection.o: lcsTetrahedronBlockIntersection.cu
-	$(NVCC) $(NVCCFLAGS) $(EXTRA_NVCCFLAGS) $(GENCODE_FLAGS) $(INCLUDES) -o $@ -c $<
+	$(NVCC) $(NVCCFLAGS) $(EXTRA_NVCCFLAGS) $(GENCODE_FLAGS)  $(INCLUDES) -o $@ -c $<
 
 # cpp
 
