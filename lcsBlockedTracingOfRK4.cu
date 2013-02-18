@@ -6,9 +6,7 @@ Last Update	:	February 14th, 2013
 
 #include <stdio.h>
 
-#define MINGCHENG_CHEN
-
-
+/*
 __device__ inline double DeterminantThree(double *a) {
 	// a[0] a[1] a[2]
 	// a[3] a[4] a[5]
@@ -17,122 +15,75 @@ __device__ inline double DeterminantThree(double *a) {
 	//       a[0] * a[5] * a[7] - a[1] * a[3] * a[8] - a[2] * a[4] * a[6];
 	return a[0] * (a[4] * a[8] - a[5] * a[7]) + a[1] * (a[5] * a[6] - a[3] * a[8]) + a[2] * (a[3] * a[7] - a[4] * a[6]);
 }
-
-#ifndef MINGCHENG_CHEN
-__device__ void CalculateNaturalCoordinates(double X, double Y, double Z, double *tetX, double *tetY, double *tetZ, double *coordinates) {
-	double x0 = tetX[0];
-	double y0 = tetY[0];
-	double z0 = tetZ[0];
-
-	double x1 = tetX[1];
-	double y1 = tetY[1];
-	double z1 = tetZ[1];
-
-	double x2 = tetX[2];
-	double y2 = tetY[2];
-	double z2 = tetZ[2];
-
-	double x3 = tetX[3];
-	double y3 = tetY[3];
-	double z3 = tetZ[3];
-
-	// Determinant of mapping from natural to physical coordinates of test element
-	double V = (x1 - x0) * ((y2 - y0) * (z3 - z0) - (z2 - z0) * (y3 - y0)) +
-		(x2 - x0) * ((y0 - y1) * (z3 - z0) - (z0 - z1) * (y3 - y0)) +
-		(x3 - x0) * ((y1 - y0) * (z2 - z0) - (z1 - z0) * (y2 - y0));	
-
-	// Natural coordinates of point to be interpolated
-	coordinates[1] = ((((z3 - z0) * (y2 - y3) - (z2 - z3) * (y3 - y0)) * (X - x0)) + 
-			  (((x3 - x0) * (z2 - z3) - (x2 - x3) * (z3 - z0)) * (Y - y0)) +
-			  (((y3 - y0) * (x2 - x3) - (y2 - y3) * (x3 - x0)) * (Z - z0))
-                         ) / V;
-			
-	coordinates[2] = ((((z3 - z0) * (y0 - y1) - (z0 - z1) * (y3 - y0)) * (X - x0)) +
-			  (((x3 - x0) * (z0 - z1) - (x0 - x1) * (z3 - z0)) * (Y - y0)) +
-			  (((y3 - y0) * (x0 - x1) - (y0 - y1) * (x3 - x0)) * (Z - z0))
-			 ) / V;
-			
-	coordinates[3] = ((((z1 - z2) * (y0 - y1) - (z0 - z1) * (y1 - y2)) * (X - x0)) +
-			  (((x1 - x2) * (z0 - z1) - (x0 - x1) * (z1 - z2)) * (Y - y0)) +
-			  (((y1 - y2) * (x0 - x1) - (y0 - y1) * (x1 - x2)) * (Z - z0))
-			 ) / V;
-
-	coordinates[0] = 1.0 - coordinates[1] - coordinates[2] - coordinates[3];		
-}
-#endif
-
-#ifdef MINGCHENG_CHEN
-__device__ inline void CalculateNaturalCoordinates(double X, double Y, double Z,
-					double *tetX, double *tetY, double *tetZ, double *coordinates) {
-	X -= tetX[0];
-	Y -= tetY[0];
-	Z -= tetZ[0];
-
-	double det[9] = {tetX[1] - tetX[0], tetY[1] - tetY[0], tetZ[1] - tetZ[0],
-			 tetX[2] - tetX[0], tetY[2] - tetY[0], tetZ[2] - tetZ[0],
-			 tetX[3] - tetX[0], tetY[3] - tetY[0], tetZ[3] - tetZ[0]};
-
-	double V = 1.0 / DeterminantThree(det);
-
-	double z41 = tetZ[3] - tetZ[0];
-	double y34 = tetY[2] - tetY[3];
-	double z34 = tetZ[2] - tetZ[3];
-	double y41 = tetY[3] - tetY[0];
-	double a11 = z41 * y34 - z34 * y41;
-
-	double x41 = tetX[3] - tetX[0];
-	double x34 = tetX[2] - tetX[3];
-	double a12 = x41 * z34 - x34 * z41;
-
-	double a13 = y41 * x34 - y34 * x41;
-
-	coordinates[1] = (a11 * X + a12 * Y + a13 * Z) * V;
-
-	double y12 = tetY[0] - tetY[1];
-	double z12 = tetZ[0] - tetZ[1];
-	double a21 = z41 * y12 - z12 * y41;
-
-	double x12 = tetX[0] - tetX[1];
-	double a22 = x41 * z12 - x12 * z41;
-
-	double a23 = y41 * x12 - y12 * x41;
-
-	coordinates[2] = (a21 * X + a22 * Y + a23 * Z) * V;
-
-	double z23 = tetZ[1] - tetZ[2];
-	double y23 = tetY[1] - tetY[2];
-	double a31 = z23 * y12 - z12 * y23;
-
-	double x23 = tetX[1] - tetX[2];
-	double a32 = x23 * z12 - x12 * z23;
-
-	double a33 = y23 * x12 - y12 * x23;
-
-	coordinates[3] = (a31 * X + a32 * Y + a33 * Z) * V;
-
-	coordinates[0] = 1.0 - coordinates[1] - coordinates[2] - coordinates[3];
-}
-#endif
+*/
 
 __device__ inline int FindCell(double *particle, int *connectivities, int *links, double *vertexPositions,
-			double epsilon, int guess, double *coordinates) {
-	double tetX[4], tetY[4], tetZ[4];
+			double epsilon, int guess, double *coordinates, double *tetX, double *tetY, double *tetZ) {
+	//double tetX[4], tetY[4], tetZ[4];
+	int i, index, pointID;
+	double X, Y, Z, V;
+	double z41, y34, z34, y41, a11, x41, x34, a12, a13, y12, z12, a21, x12, a22, a23, z23, y23, a31, x23, a32, a33;
 
 	while (true) {
-		for (int i = 0; i < 4; i++) {
-			int pointID = connectivities[(guess << 2) | i];
+		for (i = 0; i < 4; i++) {
+			pointID = connectivities[(guess << 2) | i] * 3;
 
-			tetX[i] = vertexPositions[pointID * 3];
-			tetY[i] = vertexPositions[pointID * 3 + 1];
-			tetZ[i] = vertexPositions[pointID * 3 + 2];
+			tetX[i] = vertexPositions[pointID /** 3*/];
+			tetY[i] = vertexPositions[pointID /** 3*/ + 1];
+			tetZ[i] = vertexPositions[pointID /** 3*/ + 2];
 		}
 
-		CalculateNaturalCoordinates(particle[0], particle[1], particle[2], tetX, tetY, tetZ, coordinates);
-		
-		int index = 0;
+		//CalculateNaturalCoordinates(particle[0], particle[1], particle[2], tetX, tetY, tetZ, coordinates);
 
-		for (int i = 1; i < 4; i++)
-			if (coordinates[i] < coordinates[index]) index = i;
+		X = particle[0] - tetX[0];
+		Y = particle[1] - tetY[0];
+		Z = particle[2] - tetZ[0];
+
+		double a[9] = {tetX[1] - tetX[0], tetY[1] - tetY[0], tetZ[1] - tetZ[0],
+				tetX[2] - tetX[0], tetY[2] - tetY[0], tetZ[2] - tetZ[0],
+				tetX[3] - tetX[0], tetY[3] - tetY[0], tetZ[3] - tetZ[0]};
+
+		V = 1.0 / (a[0] * (a[4] * a[8] - a[5] * a[7]) + a[1] * (a[5] * a[6] - a[3] * a[8]) + a[2] * (a[3] * a[7] - a[4] * a[6]));
+
+		z41 = tetZ[3] - tetZ[0];
+		y34 = tetY[2] - tetY[3];
+		z34 = tetZ[2] - tetZ[3];
+		y41 = tetY[3] - tetY[0];
+		a11 = z41 * y34 - z34 * y41;
+
+		x41 = tetX[3] - tetX[0];
+		x34 = tetX[2] - tetX[3];
+		a12 = x41 * z34 - x34 * z41;
+
+		a13 = y41 * x34 - y34 * x41;
+
+		coordinates[1] = (a11 * X + a12 * Y + a13 * Z) * V;
+
+		y12 = tetY[0] - tetY[1];
+		z12 = tetZ[0] - tetZ[1];
+		a21 = z41 * y12 - z12 * y41;
+
+		x12 = tetX[0] - tetX[1];
+		a22 = x41 * z12 - x12 * z41;
+
+		a23 = y41 * x12 - y12 * x41;
+
+		coordinates[2] = (a21 * X + a22 * Y + a23 * Z) * V;
+		index = coordinates[2] < coordinates[1] ? 2 : 1;
+
+		z23 = tetZ[1] - tetZ[2];
+		y23 = tetY[1] - tetY[2];
+		a31 = z23 * y12 - z12 * y23;
+
+		x23 = tetX[1] - tetX[2];
+		a32 = x23 * z12 - x12 * z23;
+
+		a33 = y23 * x12 - y12 * x23;
+
+		if ((coordinates[3] = (a31 * X + a32 * Y + a33 * Z) * V) < coordinates[index]) index = 3;
+
+		if ((coordinates[0] = 1.0 - coordinates[1] - coordinates[2] - coordinates[3]) < coordinates[index]) index = 0;
+
 		if (coordinates[index] >= -epsilon) break;
 
 		guess = links[(guess << 2) | index];
@@ -406,7 +357,8 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 				/*double coordinates[4];*/
 
 				//int nextCell;
-				nextCell = FindCell(placeOfInterest, connectivities, links, vertexPositions, /*doubleValues[3]*/epsilon, currCell, coordinates);
+				nextCell = FindCell(placeOfInterest, connectivities, links, vertexPositions, /*doubleValues[3]*/epsilon, currCell, coordinates,
+							vecX, vecY, vecZ);
 
 				if (nextCell == -1 || currTime >= /*doubleValues[1]*/endTime) {
 					// Find the next cell globally
@@ -419,7 +371,8 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 						//nextGlobalCell = blockedGlobalCellIDs[startCell + nextCell];
 					else
 						nextCell/*nextGlobalCell*/ = FindCell(placeOfInterest, (int *)pointers[1], (int *)pointers[2], (double *)pointers[0],
-									/*doubleValues[3]*/epsilon, /*globalCellID*/((int *)pointers[10])[startCell + currCell], coordinates);
+									/*doubleValues[3]*/epsilon, /*globalCellID*/((int *)pointers[10])[startCell + currCell], coordinates,
+									vecX, vecY, vecZ);
 						//nextGlobalCell = FindCell(placeOfInterest, globalTetrahedralConnectivities,
 						//			globalTetrahedralLinks, globalVertexPositions,
 						//			epsilon, globalCellID, coordinates);
@@ -449,23 +402,23 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 					((int *)pointers[24])[activeParticleID] = nextCell;//nextGlobalCell;
 					//exitCells[activeParticleID] = nextGlobalCell;
 		
-					if (currStage > 0) {
+					if (currStage > 0) { // currStage > 0
 						((double *)pointers[16])[activeParticleID * 3] = currK1[0];
 						((double *)pointers[16])[activeParticleID * 3 + 1] = currK1[1];
 						((double *)pointers[16])[activeParticleID * 3 + 2] = currK1[2];
 						//k1[activeParticleID * 3] = currK1[0];
 						//k1[activeParticleID * 3 + 1] = currK1[1];
 						//k1[activeParticleID * 3 + 2] = currK1[2];
-					}
-					if (currStage > 1) {
+					}	
+					if (currStage > 1) { // currStage > 1
 						((double *)pointers[17])[activeParticleID * 3] = currK2[0];
 						((double *)pointers[17])[activeParticleID * 3 + 1] = currK2[1];
 						((double *)pointers[17])[activeParticleID * 3 + 2] = currK2[2];
 						//k2[activeParticleID * 3] = currK2[0];
 						//k2[activeParticleID * 3 + 1] = currK2[1];
 						//k2[activeParticleID * 3 + 2] = currK2[2];
-					}
-					if (currStage > 2) {
+					}	
+					if (currStage > 2) { // currStage > 2
 						((double *)pointers[18])[activeParticleID * 3] = currK3[0];
 						((double *)pointers[18])[activeParticleID * 3 + 1] = currK3[1];
 						((double *)pointers[18])[activeParticleID * 3 + 2] = currK3[2];
@@ -473,6 +426,7 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 						//k3[activeParticleID * 3 + 1] = currK3[1];
 						//k3[activeParticleID * 3 + 2] = currK3[2];
 					}
+					
 					break;
 				}
 
@@ -487,7 +441,7 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 				}
 
 				/*double*/ alpha = (/*doubleValues[1]*/endTime - alpha/*exactTime*/) / (/*doubleValues[1]*/endTime - /*doubleValues[0]*/startTime);
-				/*double*/ beta = 1 - alpha;
+				/*double*/ beta = 1.0 - alpha;
 
 				/*double vecX[4], vecY[4], vecZ[4];*/
 
@@ -528,7 +482,7 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 					currTime += /*doubleValues[2]*/timeStep;
 
 					for (/*int*/ i = 0; i < 3; i++)
-						currLastPosition[i] += (currK1[i] + 2 * (currK2[i] + currK3[i]) + currK4[i]) / 6;
+						currLastPosition[i] += (currK1[i] + 2.0 * (currK2[i] + currK3[i]) + currK4[i]) / 6.0;
 
 					currStage = 0;
 				} else
