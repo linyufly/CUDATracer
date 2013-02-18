@@ -1,7 +1,7 @@
 /**********************************************
 File		:	main.cpp
 Author		:	Mingcheng Chen
-Last Update	:	February 13th, 2013
+Last Update	:	February 17th, 2013
 ***********************************************/
 
 #include "lcs.h"
