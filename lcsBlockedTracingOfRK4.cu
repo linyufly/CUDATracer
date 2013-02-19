@@ -1,7 +1,7 @@
 /*****************************************************
 File		:	lcsBlockedTracingOfRK4.cu
 Author		:	Mingcheng Chen
-Last Update	:	February 14th, 2013
+Last Update	:	February 18th, 2013
 ******************************************************/
 
 #include <stdio.h>
@@ -20,17 +20,17 @@ __device__ inline double DeterminantThree(double *a) {
 __device__ inline int FindCell(double *particle, int *connectivities, int *links, double *vertexPositions,
 			double epsilon, int guess, double *coordinates, double *tetX, double *tetY, double *tetZ) {
 	//double tetX[4], tetY[4], tetZ[4];
-	int i, index, pointID;
+	int index, pointID;
 	double X, Y, Z, V;
 	double z41, y34, z34, y41, a11, x41, x34, a12, a13, y12, z12, a21, x12, a22, a23, z23, y23, a31, x23, a32, a33;
 
 	while (true) {
-		for (i = 0; i < 4; i++) {
-			pointID = connectivities[(guess << 2) | i] * 3;
+		for (index = 0; index < 4; index++) {
+			pointID = connectivities[(guess << 2) | index] * 3;
 
-			tetX[i] = vertexPositions[pointID /** 3*/];
-			tetY[i] = vertexPositions[pointID /** 3*/ + 1];
-			tetZ[i] = vertexPositions[pointID /** 3*/ + 2];
+			tetX[index] = vertexPositions[pointID /** 3*/];
+			tetY[index] = vertexPositions[pointID /** 3*/ + 1];
+			tetZ[index] = vertexPositions[pointID /** 3*/ + 2];
 		}
 
 		//CalculateNaturalCoordinates(particle[0], particle[1], particle[2], tetX, tetY, tetZ, coordinates);
@@ -39,19 +39,34 @@ __device__ inline int FindCell(double *particle, int *connectivities, int *links
 		Y = particle[1] - tetY[0];
 		Z = particle[2] - tetZ[0];
 
-		double a[9] = {tetX[1] - tetX[0], tetY[1] - tetY[0], tetZ[1] - tetZ[0],
-				tetX[2] - tetX[0], tetY[2] - tetY[0], tetZ[2] - tetZ[0],
-				tetX[3] - tetX[0], tetY[3] - tetY[0], tetZ[3] - tetZ[0]};
+		tetX[1] -= tetX[0];
+		tetX[2] -= tetX[0];
+		tetX[3] -= tetX[0];
 
-		V = 1.0 / (a[0] * (a[4] * a[8] - a[5] * a[7]) + a[1] * (a[5] * a[6] - a[3] * a[8]) + a[2] * (a[3] * a[7] - a[4] * a[6]));
+		tetY[1] -= tetY[0];
+		tetY[2] -= tetY[0];
+		tetY[3] -= tetY[0];
 
-		z41 = tetZ[3] - tetZ[0];
+		tetZ[1] -= tetZ[0];
+		tetZ[2] -= tetZ[0];
+		tetZ[3] -= tetZ[0];
+
+		//double a[9] = {tetX[1] - tetX[0], tetY[1] - tetY[0], tetZ[1] - tetZ[0],
+		//		tetX[2] - tetX[0], tetY[2] - tetY[0], tetZ[2] - tetZ[0],
+		//		tetX[3] - tetX[0], tetY[3] - tetY[0], tetZ[3] - tetZ[0]};
+
+		//V = 1.0 / (a[0] * (a[4] * a[8] - a[5] * a[7]) + a[1] * (a[5] * a[6] - a[3] * a[8]) + a[2] * (a[3] * a[7] - a[4] * a[6]));
+		V = 1.0 / (tetX[1] * (tetY[2] * tetZ[3] - tetZ[2] * tetY[3]) + 
+			   tetY[1] * (tetZ[2] * tetX[3] - tetX[2] * tetZ[3]) +
+			   tetZ[1] * (tetX[2] * tetY[3] - tetY[2] * tetX[3]));
+
+		z41 = tetZ[3];// - tetZ[0];
 		y34 = tetY[2] - tetY[3];
 		z34 = tetZ[2] - tetZ[3];
-		y41 = tetY[3] - tetY[0];
+		y41 = tetY[3];// - tetY[0];
 		a11 = z41 * y34 - z34 * y41;
 
-		x41 = tetX[3] - tetX[0];
+		x41 = tetX[3];// - tetX[0];
 		x34 = tetX[2] - tetX[3];
 		a12 = x41 * z34 - x34 * z41;
 
@@ -59,11 +74,11 @@ __device__ inline int FindCell(double *particle, int *connectivities, int *links
 
 		coordinates[1] = (a11 * X + a12 * Y + a13 * Z) * V;
 
-		y12 = tetY[0] - tetY[1];
-		z12 = tetZ[0] - tetZ[1];
+		y12 = /*tetY[0]*/ - tetY[1];
+		z12 = /*tetZ[0]*/ - tetZ[1];
 		a21 = z41 * y12 - z12 * y41;
 
-		x12 = tetX[0] - tetX[1];
+		x12 = /*tetX[0]*/ - tetX[1];
 		a22 = x41 * z12 - x12 * z41;
 
 		a23 = y41 * x12 - y12 * x41;
