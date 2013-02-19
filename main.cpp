@@ -1,7 +1,7 @@
 /**********************************************
 File		:	main.cpp
 Author		:	Mingcheng Chen
-Last Update	:	February 17th, 2013
+Last Update	:	February 19th, 2013
 ***********************************************/
 
 #include "lcs.h"
@@ -14,40 +14,34 @@ Last Update	:	February 17th, 2013
 #include <algorithm>
 #include <cuda_runtime.h>
 
-#define MAX_THREADS_PER_SM 512
+#define MAX_THREADS_PER_SM 640
 #define MAX_THREADS_PER_BLOCK 256
 #define MAX_SHARED_MEMORY_PER_SM 49000
 #define WARP_SIZE 32
 
 #define MAX_MULTIPLE 16
 
-extern "C" void TetrahedronBlockIntersection(double *vertexPositions,
-					int *tetrahedralConnectivities,
-					int *queryTetrahedron,
-					int *queryBlock,
-					bool *queryResult,
-					int numOfBlocksInY, int numOfBlocksInZ,
-					double globalMinX, double globalMinY, double globalMinZ,
-					double blockSize,
-					double epsilon,
-					int numOfQueries, double marginRatio
-					);
+extern "C" void TetrahedronBlockIntersection(double *vertexPositions, int *tetrahedralConnectivities, int *queryTetrahedron, int *queryBlock, bool *queryResult,
+					int numOfBlocksInY, int numOfBlocksInZ, double globalMinX, double globalMinY, double globalMinZ, double blockSize,
+					double epsilon, int numOfQueries, double marginRatio);
 
-extern "C" void InitialCellLocation(double *vertexPositions,
-			int *tetrahedralConnectivities,
-			int *cellLocations,
-			int xRes, int yRes, int zRes,
-			double minX, double minY, double minZ,
-			double dx, double dy, double dz,
-			double epsilon,
-			int numOfCells);
+extern "C" void InitialCellLocation(double *vertexPositions, int *tetrahedralConnectivities, int *cellLocations, int xRes, int yRes, int zRes,
+					double minX, double minY, double minZ, double dx, double dy, double dz, double epsilon, int numOfCells);
 
-extern "C" void BlockedTracingOfRK4(double *globalVertexPositions, int *globalTetrahedralConnectivities,
+extern "C" void InitializeConstantsForBlockedTracingKernelOfRK4(double *globalVertexPositions, int *globalTetrahedralConnectivities,
+								int *globalTetrahedralLinks, int *startOffsetInCell, int *startOffsetInPoint, double *vertexPositionsForBig,
+								double *startVelocitiesForBig, double *endVelocitiesForBig, int *blockedLocalConnectivities, int *blockedLocalLinks,
+								int *blockedGlobalCellIDs, int *activeBlockList, // Map active block ID to interesting block ID
+								int *blockOfGroups, int *offsetInBlocks, int *stage, double *lastPosition, double *k1, double *k2, double *k3,
+								double *pastTimes, double *placesOfInterest, int *startOffsetInParticle, int *blockedActiveParticleIDList,
+								int *cellLocations, int *exitCells);
+
+extern "C" void BlockedTracingOfRK4(/*double *globalVertexPositions, int *globalTetrahedralConnectivities,
 				int *globalTetrahedralLinks, int *startOffsetInCell, int *startOffsetInPoint, double *vertexPositionsForBig, double *startVelocitiesForBig,
 				double *endVelocitiesForBig, int *blockedLocalConnectivities, int *blockedLocalLinks, int *blockedGlobalCellIDs,
 				int *activeBlockList, // Map active block ID to interesting block ID
 				int *blockOfGroups, int *offsetInBlocks, int *stage, double *lastPosition, double *k1, double *k2, double *k3, double *pastTimes,
-				double *placesOfInterest, int *startOffsetInParticle, int *blockedActiveParticleIDList, int *cellLocations, int *exitCells,
+				double *placesOfInterest, int *startOffsetInParticle, int *blockedActiveParticleIDList, int *cellLocations, int *exitCells,*/
 				double startTime, double endTime, double timeStep, double epsilon, int numOfActiveBlocks, int blockSize, int sharedMemorySize, int multiple);
 
 extern "C" void GetNumOfGroupsForBlocks(int *startOffsetInParticles, int *numOfGroupsForBlocks, int numOfActiveBlocks, int groupSize);
@@ -1107,18 +1101,16 @@ void BigBlockInitializationForVelocities(int currStartVIndex) {
 double kernelSum;
 
 void LaunchBlockedTracingKernel(int numOfWorkGroups, double beginTime, double finishTime, int blockSize, int sharedMemorySize, int multiple) {
-	int starTime;
-
 	//printf("Start to use GPU to process blocked tracing ...\n");
 	//printf("\n");
 
 	double startTime = lcs::GetCurrentTimeInSeconds();
 
-	BlockedTracingOfRK4(d_vertexPositions, d_tetrahedralConnectivities,
+	BlockedTracingOfRK4(/*d_vertexPositions, d_tetrahedralConnectivities,
 				d_tetrahedralLinks, d_startOffsetInCell, d_startOffsetInPoint, d_vertexPositionsForBig, d_startVelocitiesForBig, d_endVelocitiesForBig, 
 				d_localConnectivities, d_localLinks, d_globalCellIDs, d_activeBlocks, // Map active block ID to interesting block ID
 				d_blockOfGroups, d_offsetInBlocks, d_stages, d_lastPositionForRK4, d_k1ForRK4, d_k2ForRK4, d_k3ForRK4, d_pastTimes, d_placesOfInterest,
-				d_startOffsetInParticles, d_blockedActiveParticles, d_localTetIDs, d_exitCells,
+				d_startOffsetInParticles, d_blockedActiveParticles, d_localTetIDs, d_exitCells,*/
 				beginTime, finishTime, configure->GetTimeStep(), configure->GetEpsilon(), numOfWorkGroups, blockSize, sharedMemorySize, multiple);
 
 	double endTime = lcs::GetCurrentTimeInSeconds();
@@ -1349,7 +1341,13 @@ void CalculateBlockSizeAndSharedMemorySizeForTracingKernel(double averageParticl
 		tracingBlockSize += WARP_SIZE;
 	if (tracingBlockSize > MAX_THREADS_PER_BLOCK)
 		tracingBlockSize = MAX_THREADS_PER_BLOCK;
-
+/*
+	for (int i = WARP_SIZE; ; i <<= 1)
+		if (i > tracingBlockSize) {
+			tracingBlockSize = i >> 1;
+			break;
+		}
+*/
 	if (tracingBlockSize < WARP_SIZE)
 		tracingBlockSize = WARP_SIZE;
 
@@ -1433,6 +1431,12 @@ void Tracing() {
 	currActiveParticleArray = 0;
 	double currTime = 0;
 	double interval = configure->GetTimeInterval();
+	
+	InitializeConstantsForBlockedTracingKernelOfRK4(d_vertexPositions, d_tetrahedralConnectivities,
+				d_tetrahedralLinks, d_startOffsetInCell, d_startOffsetInPoint, d_vertexPositionsForBig, d_startVelocitiesForBig, d_endVelocitiesForBig, 
+				d_localConnectivities, d_localLinks, d_globalCellIDs, d_activeBlocks, // Map active block ID to interesting block ID
+				d_blockOfGroups, d_offsetInBlocks, d_stages, d_lastPositionForRK4, d_k1ForRK4, d_k2ForRK4, d_k3ForRK4, d_pastTimes, d_placesOfInterest,
+				d_startOffsetInParticles, d_blockedActiveParticles, d_localTetIDs, d_exitCells);
 	
 	// Main loop for blocked tracing
 	/// DEBUG ///

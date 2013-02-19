@@ -1,7 +1,7 @@
 /*****************************************************
 File		:	lcsBlockedTracingOfRK4.cu
 Author		:	Mingcheng Chen
-Last Update	:	February 18th, 2013
+Last Update	:	February 19th, 2013
 ******************************************************/
 
 #include <stdio.h>
@@ -510,7 +510,7 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 }
 
 extern "C"
-void BlockedTracingOfRK4(double *globalVertexPositions,
+void InitializeConstantsForBlockedTracingKernelOfRK4(double *globalVertexPositions,
 			int *globalTetrahedralConnectivities,
 			int *globalTetrahedralLinks,
 
@@ -543,14 +543,7 @@ void BlockedTracingOfRK4(double *globalVertexPositions,
 			int *blockedActiveParticleIDList,
 			int *cellLocations,
 
-			int *exitCells,
-
-			double startTime, double endTime, double timeStep, double epsilon, int numOfActiveBlocks,
-
-			int blockSize, int sharedMemorySize, int multiple) {
-	dim3 dimBlock(blockSize, 1, 1);
-	dim3 dimGrid(numOfActiveBlocks, 1, 1);
-
+			int *exitCells) {
 	int sizeOfPointer = sizeof(void *);
 
 	cudaError_t err = (cudaError_t)(cudaMemcpyToSymbol(pointers, &globalVertexPositions, sizeOfPointer, 0, cudaMemcpyHostToDevice) |
@@ -588,6 +581,49 @@ void BlockedTracingOfRK4(double *globalVertexPositions,
 		printf("Symbol Memcpy Failure\n");
 		exit(0);
 	}
+}
+
+extern "C"
+void BlockedTracingOfRK4(/*double *globalVertexPositions,
+			int *globalTetrahedralConnectivities,
+			int *globalTetrahedralLinks,
+
+			int *startOffsetInCell,
+			int *startOffsetInPoint,
+
+			double *vertexPositionsForBig,
+			double *startVelocitiesForBig,
+			double *endVelocitiesForBig,
+
+			int *blockedLocalConnectivities,
+			int *blockedLocalLinks,
+			int *blockedGlobalCellIDs,
+
+			int *activeBlockList, // Map active block ID to interesting block ID
+
+			int *blockOfGroups,
+			int *offsetInBlocks,
+
+			int *stage,
+			double *lastPosition,
+			double *k1,
+			double *k2,
+			double *k3,
+			double *pastTimes,
+
+			double *placesOfInterest,
+
+			int *startOffsetInParticle,
+			int *blockedActiveParticleIDList,
+			int *cellLocations,
+
+			int *exitCells,*/
+
+			double startTime, double endTime, double timeStep, double epsilon, int numOfActiveBlocks,
+
+			int blockSize, int sharedMemorySize, int multiple) {
+	dim3 dimBlock(blockSize, 1, 1);
+	dim3 dimGrid(numOfActiveBlocks, 1, 1);
 
 	BlockedTracingKernelOfRK4<<<dimGrid, dimBlock, sharedMemorySize>>>(/*globalVertexPositions,
 					globalTetrahedralConnectivities,
@@ -628,7 +664,7 @@ void BlockedTracingOfRK4(double *globalVertexPositions,
 
 					sharedMemorySize, multiple);
 
-	err = cudaDeviceSynchronize();
+	cudaError_t err = cudaDeviceSynchronize();
 	if (err) {
 		printf("err = %d\n", err);
 		cudaGetErrorString(err);
