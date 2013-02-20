@@ -17,6 +17,10 @@ __device__ inline double DeterminantThree(double *a) {
 }
 */
 
+__constant__ void *pointers[25];
+__constant__ double timeStep, epsilon;
+//__constant__ double doubleValues[4];
+
 __device__ inline int FindCell(double *particle, int *connectivities, int *links, double *vertexPositions,
 			double epsilon, int guess, double *coordinates, double *tetX, double *tetY, double *tetZ) {
 	//double tetX[4], tetY[4], tetZ[4];
@@ -108,9 +112,6 @@ __device__ inline int FindCell(double *particle, int *connectivities, int *links
 
 	return guess;
 }
-
-__constant__ void *pointers[25];
-//__constant__ double doubleValues[4];
 
 __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 					int *globalTetrahedralConnectivities,
@@ -543,7 +544,9 @@ void InitializeConstantsForBlockedTracingKernelOfRK4(double *globalVertexPositio
 			int *blockedActiveParticleIDList,
 			int *cellLocations,
 
-			int *exitCells) {
+			int *exitCells,
+
+			double hostTimeStep, double hostEpsilon) {
 	int sizeOfPointer = sizeof(void *);
 
 	cudaError_t err = (cudaError_t)(cudaMemcpyToSymbol(pointers, &globalVertexPositions, sizeOfPointer, 0, cudaMemcpyHostToDevice) |
@@ -570,7 +573,9 @@ void InitializeConstantsForBlockedTracingKernelOfRK4(double *globalVertexPositio
 			  cudaMemcpyToSymbol(pointers, &startOffsetInParticle, sizeOfPointer, sizeOfPointer * 21, cudaMemcpyHostToDevice) |
 			  cudaMemcpyToSymbol(pointers, &blockedActiveParticleIDList, sizeOfPointer, sizeOfPointer * 22, cudaMemcpyHostToDevice) |
 			  cudaMemcpyToSymbol(pointers, &cellLocations, sizeOfPointer, sizeOfPointer * 23, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &exitCells, sizeOfPointer, sizeOfPointer * 24, cudaMemcpyHostToDevice));
+			  cudaMemcpyToSymbol(pointers, &exitCells, sizeOfPointer, sizeOfPointer * 24, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(timeStep, &hostTimeStep, sizeof(double), 0, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(epsilon, &hostEpsilon, sizeof(double), 0, cudaMemcpyHostToDevice));
 /*
 	err = (cudaError_t)((int)err | cudaMemcpyToSymbol(doubleValues, &startTime, sizeof(double), 0, cudaMemcpyHostToDevice) |
 		cudaMemcpyToSymbol(doubleValues, &endTime, sizeof(double), sizeof(double), cudaMemcpyHostToDevice) |
