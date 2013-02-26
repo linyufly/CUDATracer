@@ -17,7 +17,15 @@ __device__ inline double DeterminantThree(double *a) {
 }
 */
 
-__constant__ void *pointers[25];
+//__constant__ void *pointers[25];
+__constant__ double *globalVertexPositions;
+__constant__ int *globalTetrahedralConnectivities, *globalTetrahedralLinks, *startOffsetInCell, *startOffsetInPoint;
+__constant__ double *vertexPositionsForBig, *startVelocitiesForBig, *endVelocitiesForBig;
+__constant__ int *blockedLocalConnectivities, *blockedLocalLinks, *blockedGlobalCellIDs, *activeBlockList, // Map active block ID to interesting block ID
+		 *blockOfGroups, *offsetInBlocks, *stage;
+__constant__ double *lastPosition, *k1, *k2, *k3, *pastTimes, *placesOfInterest;
+__constant__ int *startOffsetInParticle, *blockedActiveParticleIDList, *cellLocations, *exitCells;
+
 __constant__ double timeStep, epsilon;
 //__constant__ double doubleValues[4];
 
@@ -193,12 +201,12 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 	//int localID = threadIdx.x;
 
 	// Get active block ID
-	int activeBlockID = ((int *)pointers[12])[blockIdx.x/*groupID*/];
+	int activeBlockID = blockOfGroups[blockIdx.x/*groupID*/];
 	//int activeBlockID = blockOfGroups[groupID];
 
 	// Get interesting block ID of the work group
 	int i, idx;
-	i = ((int *)pointers[11])[activeBlockID];
+	i = activeBlockList[activeBlockID];
 	//int interestingBlockID = ((int *)pointers[11])[activeBlockID];
 	//int interestingBlockID = activeBlockList[activeBlockID];
 
@@ -209,14 +217,14 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 	int *connectivities;
 	int *links;
 
-	int startCell = ((int *)pointers[3])[i/*interestingBlockID*/];
-	int offset/*int startPoint*/ = ((int *)pointers[4])[i/*interestingBlockID*/];
+	int startCell = startOffsetInCell[i/*interestingBlockID*/];
+	int offset/*int startPoint*/ = startOffsetInPoint[i/*interestingBlockID*/];
 	idx = offset * 3;
 	//int startCell = startOffsetInCell[interestingBlockID];
 	//int startPoint = startOffsetInPoint[interestingBlockID];
 
-	int numOfCells = ((int *)pointers[3])[i/*interestingBlockID*/ + 1] - startCell;
-	int numOfPoints = ((int *)pointers[4])[i/*interestingBlockID*/ + 1] - offset/*startPoint*/;
+	int numOfCells = startOffsetInCell[i/*interestingBlockID*/ + 1] - startCell;
+	int numOfPoints = startOffsetInPoint[i/*interestingBlockID*/ + 1] - offset/*startPoint*/;
 
 	//startPoint *= 3;
 	//int numOfCells = startOffsetInCell[interestingBlockID + 1] - startCell;
@@ -239,17 +247,17 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 		links = connectivities + (numOfCells << 2);
 
 		for (/*int*/ i = threadIdx.x/*localID*/; i < numOfPoints * 3; i += blockDim.x/*numOfThreads*/) {
-			vertexPositions[i] = ((double *)pointers[5])[idx/*startPoint * 3*/ + i];
-			startVelocities[i] = ((double *)pointers[6])[idx/*startPoint * 3*/ + i];
-			endVelocities[i] = ((double *)pointers[7])[idx/*startPoint * 3*/ + i];
+			vertexPositions[i] = vertexPositionsForBig[idx/*startPoint * 3*/ + i];
+			startVelocities[i] = startVelocitiesForBig[idx/*startPoint * 3*/ + i];
+			endVelocities[i] = endVelocitiesForBig[idx/*startPoint * 3*/ + i];
 			//vertexPositions[i] = vertexPositionsForBig[startPoint * 3 + i];
 			//startVelocities[i] = startVelocitiesForBig[startPoint * 3 + i];
 			//endVelocities[i] = endVelocitiesForBig[startPoint * 3 + i];
 		}
 
 		for (/*int*/ i = threadIdx.x/*localID*/; i < (numOfCells << 2); i += blockDim.x/*numOfThreads*/) {
-			connectivities[i] = ((int *)pointers[8])[(startCell << 2) + i];
-			links[i] = ((int *)pointers[9])[(startCell << 2) + i];
+			connectivities[i] = blockedLocalConnectivities[(startCell << 2) + i];
+			links[i] = blockedLocalLinks[(startCell << 2) + i];
 			//connectivities[i] = blockedLocalConnectivities[(startCell << 2) + i];
 			//links[i] = blockedLocalLinks[(startCell << 2) + i];
 		}
@@ -257,24 +265,24 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 		//__syncthreads();
 	} else { // This branch fills in the global memory
 		// Initialize vertexPositions, startVelocities and endVelocities
-		vertexPositions = (double *)pointers[5] + idx/*startPoint * 3*/;
-		startVelocities = (double *)pointers[6] + idx/*startPoint * 3*/;
-		endVelocities = (double *)pointers[7] + idx/*startPoint * 3*/;
+		vertexPositions = vertexPositionsForBig + idx/*startPoint * 3*/;
+		startVelocities = startVelocitiesForBig + idx/*startPoint * 3*/;
+		endVelocities = endVelocitiesForBig + idx/*startPoint * 3*/;
 		//vertexPositions = vertexPositionsForBig + startPoint * 3;
 		//startVelocities = startVelocitiesForBig + startPoint * 3;
 		//endVelocities = endVelocitiesForBig + startPoint * 3;
 
 		// Initialize connectivities and links
-		connectivities = (int *)pointers[8] + (startCell << 2);
-		links = (int *)pointers[9] + (startCell << 2);
+		connectivities = blockedLocalConnectivities + (startCell << 2);
+		links = blockedLocalLinks + (startCell << 2);
 		//connectivities = blockedLocalConnectivities + (startCell << 2);
 		//links = blockedLocalLinks + (startCell << 2);
 	}
 
 	__syncthreads();
 
-	int numOfActiveParticles = ((int *)pointers[21])[activeBlockID + 1] - ((int *)pointers[21])[activeBlockID];
-	/*int*/ offset = ((int *)pointers[13])[blockIdx.x/*groupID*/] * blockDim.x/*numOfThreads*/ * multiple;
+	int numOfActiveParticles = startOffsetInParticle[activeBlockID + 1] - startOffsetInParticle[activeBlockID];
+	/*int*/ offset = offsetInBlocks[blockIdx.x/*groupID*/] * blockDim.x/*numOfThreads*/ * multiple;
 	//int numOfActiveParticles = startOffsetInParticle[activeBlockID + 1] - startOffsetInParticle[activeBlockID];
 	//int offset = offsetInBlocks[groupID] * numOfThreads * multiple;
 
@@ -300,47 +308,47 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 			// activeParticleID here means the initial active particle ID
 			//arrayIdx += ((int *)pointers[21])[activeBlockID];
 			//int activeParticleID = ((int *)pointers[22])[arrayIdx];
-			activeParticleID = ((int *)pointers[22])[activeParticleID + ((int *)pointers[21])[activeBlockID]];
+			activeParticleID = blockedActiveParticleIDList[activeParticleID + startOffsetInParticle[activeBlockID]];
 			//arrayIdx += startOffsetInParticle[activeBlockID];
 			//int activeParticleID = blockedActiveParticleIDList[arrayIdx];
 
 			// Initialize the particle status
-			/*int*/ currStage = ((int *)pointers[14])[activeParticleID];
-			/*int*/ currCell = ((int *)pointers[23])[activeParticleID];
+			/*int*/ currStage = stage[activeParticleID];
+			/*int*/ currCell = cellLocations[activeParticleID];
 			//int currStage = stage[activeParticleID];
 			//int currCell = cellLocations[activeParticleID];
 
-			/*double*/ currTime = ((double *)pointers[19])[activeParticleID];
+			/*double*/ currTime = pastTimes[activeParticleID];
 			//double currTime = pastTimes[activeParticleID];
 
 			/*double currLastPosition[3];*/
-			currLastPosition[0] = ((double *)pointers[15])[activeParticleID * 3];
-			currLastPosition[1] = ((double *)pointers[15])[activeParticleID * 3 + 1];
-			currLastPosition[2] = ((double *)pointers[15])[activeParticleID * 3 + 2];
+			currLastPosition[0] = lastPosition[activeParticleID * 3];
+			currLastPosition[1] = lastPosition[activeParticleID * 3 + 1];
+			currLastPosition[2] = lastPosition[activeParticleID * 3 + 2];
 			//currLastPosition[0] = lastPosition[activeParticleID * 3];
 			//currLastPosition[1] = lastPosition[activeParticleID * 3 + 1];
 			//currLastPosition[2] = lastPosition[activeParticleID * 3 + 2];
 			/*double currK1[3], currK2[3], currK3[3], currK4[3];*/
 			if (currStage > 0) {
-				currK1[0] = ((double *)pointers[16])[activeParticleID * 3];
-				currK1[1] = ((double *)pointers[16])[activeParticleID * 3 + 1];
-				currK1[2] = ((double *)pointers[16])[activeParticleID * 3 + 2];
+				currK1[0] = k1[activeParticleID * 3];
+				currK1[1] = k1[activeParticleID * 3 + 1];
+				currK1[2] = k1[activeParticleID * 3 + 2];
 				//currK1[0] = k1[activeParticleID * 3];
 				//currK1[1] = k1[activeParticleID * 3 + 1];
 				//currK1[2] = k1[activeParticleID * 3 + 2];
 			}
 			if (currStage > 1) {
-				currK2[0] = ((double *)pointers[17])[activeParticleID * 3];
-				currK2[1] = ((double *)pointers[17])[activeParticleID * 3 + 1];
-				currK2[2] = ((double *)pointers[17])[activeParticleID * 3 + 2];
+				currK2[0] = k2[activeParticleID * 3];
+				currK2[1] = k2[activeParticleID * 3 + 1];
+				currK2[2] = k2[activeParticleID * 3 + 2];
 				//currK2[0] = k2[activeParticleID * 3];
 				//currK2[1] = k2[activeParticleID * 3 + 1];
 				//currK2[2] = k2[activeParticleID * 3 + 2];
 			}
 			if (currStage > 2) {
-				currK3[0] = ((double *)pointers[18])[activeParticleID * 3];
-				currK3[1] = ((double *)pointers[18])[activeParticleID * 3 + 1];
-				currK3[2] = ((double *)pointers[18])[activeParticleID * 3 + 2];
+				currK3[0] = k3[activeParticleID * 3];
+				currK3[1] = k3[activeParticleID * 3 + 1];
+				currK3[2] = k3[activeParticleID * 3 + 2];
 				//currK3[0] = k3[activeParticleID * 3];
 				//currK3[1] = k3[activeParticleID * 3 + 1];
 				//currK3[2] = k3[activeParticleID * 3 + 2];
@@ -383,11 +391,11 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 					//int nextGlobalCell;
 				
 					if (nextCell != -1)
-						nextCell/*nextGlobalCell*/ = ((int *)pointers[10])[startCell + nextCell];
+						nextCell/*nextGlobalCell*/ = blockedGlobalCellIDs[startCell + nextCell];
 						//nextGlobalCell = blockedGlobalCellIDs[startCell + nextCell];
 					else
-						nextCell/*nextGlobalCell*/ = FindCell(placeOfInterest, (int *)pointers[1], (int *)pointers[2], (double *)pointers[0],
-									/*doubleValues[3]*/epsilon, /*globalCellID*/((int *)pointers[10])[startCell + currCell], coordinates,
+						nextCell/*nextGlobalCell*/ = FindCell(placeOfInterest, globalTetrahedralConnectivities, globalTetrahedralLinks, globalVertexPositions,
+									/*doubleValues[3]*/epsilon, /*globalCellID*/blockedGlobalCellIDs[startCell + currCell], coordinates,
 									vecX, vecY, vecZ);
 						//nextGlobalCell = FindCell(placeOfInterest, globalTetrahedralConnectivities,
 						//			globalTetrahedralLinks, globalVertexPositions,
@@ -395,52 +403,52 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 
 					if (currTime >= /*doubleValues[1]*/endTime && nextCell/*nextGlobalCell*/ != -1) nextCell = -2 - nextCell;//nextGlobalCell = -2 - nextGlobalCell;
 
-					((double *)pointers[19])[activeParticleID] = currTime;
+					pastTimes[activeParticleID] = currTime;
 					//pastTimes[activeParticleID] = currTime;
 
-					((int *)pointers[14])[activeParticleID] = currStage;
+					stage[activeParticleID] = currStage;
 					//stage[activeParticleID] = currStage;
 
-					((double *)pointers[15])[activeParticleID * 3] = currLastPosition[0];
-					((double *)pointers[15])[activeParticleID * 3 + 1] = currLastPosition[1];
-					((double *)pointers[15])[activeParticleID * 3 + 2] = currLastPosition[2];
+					lastPosition[activeParticleID * 3] = currLastPosition[0];
+					lastPosition[activeParticleID * 3 + 1] = currLastPosition[1];
+					lastPosition[activeParticleID * 3 + 2] = currLastPosition[2];
 					//lastPosition[activeParticleID * 3] = currLastPosition[0];
 					//lastPosition[activeParticleID * 3 + 1] = currLastPosition[1];
 					//lastPosition[activeParticleID * 3 + 2] = currLastPosition[2];
 
-					((double *)pointers[20])[activeParticleID * 3] = placeOfInterest[0];
-					((double *)pointers[20])[activeParticleID * 3 + 1] = placeOfInterest[1];
-					((double *)pointers[20])[activeParticleID * 3 + 2] = placeOfInterest[2];
+					placesOfInterest[activeParticleID * 3] = placeOfInterest[0];
+					placesOfInterest[activeParticleID * 3 + 1] = placeOfInterest[1];
+					placesOfInterest[activeParticleID * 3 + 2] = placeOfInterest[2];
 					//placesOfInterest[activeParticleID * 3] = placeOfInterest[0];
 					//placesOfInterest[activeParticleID * 3 + 1] = placeOfInterest[1];
 					//placesOfInterest[activeParticleID * 3 + 2] = placeOfInterest[2];
 
-					((int *)pointers[24])[activeParticleID] = nextCell;//nextGlobalCell;
+					exitCells[activeParticleID] = nextCell;//nextGlobalCell;
 					//exitCells[activeParticleID] = nextGlobalCell;
 		
 					if (currStage > 0) { // currStage > 0
-						((double *)pointers[16])[activeParticleID * 3] = currK1[0];
-						((double *)pointers[16])[activeParticleID * 3 + 1] = currK1[1];
-						((double *)pointers[16])[activeParticleID * 3 + 2] = currK1[2];
+						k1[activeParticleID * 3] = currK1[0];
+						k1[activeParticleID * 3 + 1] = currK1[1];
+						k1[activeParticleID * 3 + 2] = currK1[2];
 						//k1[activeParticleID * 3] = currK1[0];
 						//k1[activeParticleID * 3 + 1] = currK1[1];
 						//k1[activeParticleID * 3 + 2] = currK1[2];
 					}	
 					if (currStage > 1) { // currStage > 1
-						((double *)pointers[17])[activeParticleID * 3] = currK2[0];
-						((double *)pointers[17])[activeParticleID * 3 + 1] = currK2[1];
-						((double *)pointers[17])[activeParticleID * 3 + 2] = currK2[2];
-						//k2[activeParticleID * 3] = currK2[0];
-						//k2[activeParticleID * 3 + 1] = currK2[1];
-						//k2[activeParticleID * 3 + 2] = currK2[2];
+						//((double *)pointers[17])[activeParticleID * 3] = currK2[0];
+						//((double *)pointers[17])[activeParticleID * 3 + 1] = currK2[1];
+						//((double *)pointers[17])[activeParticleID * 3 + 2] = currK2[2];
+						k2[activeParticleID * 3] = currK2[0];
+						k2[activeParticleID * 3 + 1] = currK2[1];
+						k2[activeParticleID * 3 + 2] = currK2[2];
 					}	
 					if (currStage > 2) { // currStage > 2
-						((double *)pointers[18])[activeParticleID * 3] = currK3[0];
-						((double *)pointers[18])[activeParticleID * 3 + 1] = currK3[1];
-						((double *)pointers[18])[activeParticleID * 3 + 2] = currK3[2];
-						//k3[activeParticleID * 3] = currK3[0];
-						//k3[activeParticleID * 3 + 1] = currK3[1];
-						//k3[activeParticleID * 3 + 2] = currK3[2];
+						//((double *)pointers[18])[activeParticleID * 3] = currK3[0];
+						//((double *)pointers[18])[activeParticleID * 3 + 1] = currK3[1];
+						//((double *)pointers[18])[activeParticleID * 3 + 2] = currK3[2];
+						k3[activeParticleID * 3] = currK3[0];
+						k3[activeParticleID * 3 + 1] = currK3[1];
+						k3[activeParticleID * 3 + 2] = currK3[2];
 					}
 					
 					break;
@@ -511,69 +519,70 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 }
 
 extern "C"
-void InitializeConstantsForBlockedTracingKernelOfRK4(double *globalVertexPositions,
-			int *globalTetrahedralConnectivities,
-			int *globalTetrahedralLinks,
+void InitializeConstantsForBlockedTracingKernelOfRK4(double *deviceGlobalVertexPositions,
+			int *deviceGlobalTetrahedralConnectivities,
+			int *deviceGlobalTetrahedralLinks,
 
-			int *startOffsetInCell,
-			int *startOffsetInPoint,
+			int *deviceStartOffsetInCell,
+			int *deviceStartOffsetInPoint,
 
-			double *vertexPositionsForBig,
-			double *startVelocitiesForBig,
-			double *endVelocitiesForBig,
+			double *deviceVertexPositionsForBig,
+			double *deviceStartVelocitiesForBig,
+			double *deviceEndVelocitiesForBig,
 
-			int *blockedLocalConnectivities,
-			int *blockedLocalLinks,
-			int *blockedGlobalCellIDs,
+			int *deviceBlockedLocalConnectivities,
+			int *deviceBlockedLocalLinks,
+			int *deviceBlockedGlobalCellIDs,
 
-			int *activeBlockList, // Map active block ID to interesting block ID
+			int *deviceActiveBlockList, // Map active block ID to interesting block ID
 
-			int *blockOfGroups,
-			int *offsetInBlocks,
+			int *deviceBlockOfGroups,
+			int *deviceOffsetInBlocks,
 
-			int *stage,
-			double *lastPosition,
-			double *k1,
-			double *k2,
-			double *k3,
-			double *pastTimes,
+			int *deviceStage,
+			double *deviceLastPosition,
+			double *deviceK1,
+			double *deviceK2,
+			double *deviceK3,
+			double *devicePastTimes,
 
-			double *placesOfInterest,
+			double *devicePlacesOfInterest,
 
-			int *startOffsetInParticle,
-			int *blockedActiveParticleIDList,
-			int *cellLocations,
+			int *deviceStartOffsetInParticle,
+			int *deviceBlockedActiveParticleIDList,
+			int *deviceCellLocations,
 
-			int *exitCells,
+			int *deviceExitCells,
 
 			double hostTimeStep, double hostEpsilon) {
 	int sizeOfPointer = sizeof(void *);
 
-	cudaError_t err = (cudaError_t)(cudaMemcpyToSymbol(pointers, &globalVertexPositions, sizeOfPointer, 0, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &globalTetrahedralConnectivities, sizeOfPointer, sizeOfPointer, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &globalTetrahedralLinks, sizeOfPointer, sizeOfPointer * 2, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &startOffsetInCell, sizeOfPointer, sizeOfPointer * 3, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &startOffsetInPoint, sizeOfPointer, sizeOfPointer * 4, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &vertexPositionsForBig, sizeOfPointer, sizeOfPointer * 5, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &startVelocitiesForBig, sizeOfPointer, sizeOfPointer * 6, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &endVelocitiesForBig, sizeOfPointer, sizeOfPointer * 7, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &blockedLocalConnectivities, sizeOfPointer, sizeOfPointer * 8, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &blockedLocalLinks, sizeOfPointer, sizeOfPointer * 9, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &blockedGlobalCellIDs, sizeOfPointer, sizeOfPointer * 10, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &activeBlockList, sizeOfPointer, sizeOfPointer * 11, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &blockOfGroups, sizeOfPointer, sizeOfPointer * 12, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &offsetInBlocks, sizeOfPointer, sizeOfPointer * 13, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &stage, sizeOfPointer, sizeOfPointer * 14, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &lastPosition, sizeOfPointer, sizeOfPointer * 15, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &k1, sizeOfPointer, sizeOfPointer * 16, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &k2, sizeOfPointer, sizeOfPointer * 17, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &k3, sizeOfPointer, sizeOfPointer * 18, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &pastTimes, sizeOfPointer, sizeOfPointer * 19, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &placesOfInterest, sizeOfPointer, sizeOfPointer * 20, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &startOffsetInParticle, sizeOfPointer, sizeOfPointer * 21, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &blockedActiveParticleIDList, sizeOfPointer, sizeOfPointer * 22, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &cellLocations, sizeOfPointer, sizeOfPointer * 23, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &exitCells, sizeOfPointer, sizeOfPointer * 24, cudaMemcpyHostToDevice) |
+	cudaError_t err = (cudaError_t)(cudaMemcpyToSymbol(globalVertexPositions, &deviceGlobalVertexPositions, sizeOfPointer, 0, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(globalTetrahedralConnectivities, &deviceGlobalTetrahedralConnectivities, sizeOfPointer, 0, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(globalTetrahedralLinks, &deviceGlobalTetrahedralLinks, sizeOfPointer, 0, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(startOffsetInCell, &deviceStartOffsetInCell, sizeOfPointer, 0, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(startOffsetInPoint, &deviceStartOffsetInPoint, sizeOfPointer, 0, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(vertexPositionsForBig, &deviceVertexPositionsForBig, sizeOfPointer, 0, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(startVelocitiesForBig, &deviceStartVelocitiesForBig, sizeOfPointer, 0, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(endVelocitiesForBig, &deviceEndVelocitiesForBig, sizeOfPointer, 0, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(blockedLocalConnectivities, &deviceBlockedLocalConnectivities, sizeOfPointer, 0, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(blockedLocalLinks, &deviceBlockedLocalLinks, sizeOfPointer, 0, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(blockedGlobalCellIDs, &deviceBlockedGlobalCellIDs, sizeOfPointer, 0, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(activeBlockList, &deviceActiveBlockList, sizeOfPointer, 0, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(blockOfGroups, &deviceBlockOfGroups, sizeOfPointer, 0, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(offsetInBlocks, &deviceOffsetInBlocks, sizeOfPointer, 0, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(stage, &deviceStage, sizeOfPointer, 0, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(lastPosition, &deviceLastPosition, sizeOfPointer, 0, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(k1, &deviceK1, sizeOfPointer, 0, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(k2, &deviceK2, sizeOfPointer, 0, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(k3, &deviceK3, sizeOfPointer, 0, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(pastTimes, &devicePastTimes, sizeOfPointer, 0, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(placesOfInterest, &devicePlacesOfInterest, sizeOfPointer, 0, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(startOffsetInParticle, &deviceStartOffsetInParticle, sizeOfPointer, 0, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(blockedActiveParticleIDList, &deviceBlockedActiveParticleIDList, sizeOfPointer, 0, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(cellLocations, &deviceCellLocations, sizeOfPointer, 0, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(exitCells, &deviceExitCells, sizeOfPointer, 0, cudaMemcpyHostToDevice) |
+
 			  cudaMemcpyToSymbol(timeStep, &hostTimeStep, sizeof(double), 0, cudaMemcpyHostToDevice) |
 			  cudaMemcpyToSymbol(epsilon, &hostEpsilon, sizeof(double), 0, cudaMemcpyHostToDevice));
 /*
