@@ -1,7 +1,7 @@
 /**********************************************
 File		:	main.cpp
 Author		:	Mingcheng Chen
-Last Update	:	February 19th, 2013
+Last Update	:	February 22nd, 2013
 ***********************************************/
 
 #include "lcs.h"
@@ -30,7 +30,8 @@ extern "C" void InitialCellLocation(double *vertexPositions, int *tetrahedralCon
 
 extern "C" void InitializeConstantsForBlockedTracingKernelOfRK4(double *globalVertexPositions, int *globalTetrahedralConnectivities,
 								int *globalTetrahedralLinks, int *startOffsetInCell, int *startOffsetInPoint, double *vertexPositionsForBig,
-								double *startVelocitiesForBig, double *endVelocitiesForBig, int *blockedLocalConnectivities, int *blockedLocalLinks,
+								double *velocitiesForBig, /* double *startVelocitiesForBig, double *endVelocitiesForBig, */
+								int *blockedLocalConnectivities, int *blockedLocalLinks,
 								int *blockedGlobalCellIDs, int *activeBlockList, // Map active block ID to interesting block ID
 								int *blockOfGroups, int *offsetInBlocks, int *stage, double *lastPosition, double *k1, double *k2, double *k3,
 								double *pastTimes, double *placesOfInterest, int *startOffsetInParticle, int *blockedActiveParticleIDList,
@@ -42,7 +43,8 @@ extern "C" void BlockedTracingOfRK4(/*double *globalVertexPositions, int *global
 				int *activeBlockList, // Map active block ID to interesting block ID
 				int *blockOfGroups, int *offsetInBlocks, int *stage, double *lastPosition, double *k1, double *k2, double *k3, double *pastTimes,
 				double *placesOfInterest, int *startOffsetInParticle, int *blockedActiveParticleIDList, int *cellLocations, int *exitCells,*/
-				double startTime, double endTime, double timeStep, double epsilon, int numOfActiveBlocks, int blockSize, int sharedMemorySize, int multiple);
+				double startTime, /*double endTime*/double intervalTime, double timeStep, double epsilon, int numOfActiveBlocks, int blockSize, int sharedMemorySize, int multiple,
+				int numOfTimePoints);
 
 extern "C" void GetNumOfGroupsForBlocks(int *startOffsetInParticles, int *numOfGroupsForBlocks, int numOfActiveBlocks, int groupSize);
 
@@ -84,9 +86,13 @@ extern "C" void CollectActiveParticles2(int *exitCells, int *oldActiveParticles,
 extern "C" void BigBlockInitializationForPositions(double *globalVertexPositions, int *blockedGlobalPointIDs, int *startOffsetInPoint,
 						double *vertexPositionsForBig, int numOfInterestingBlocks);
 
+extern "C" void BigBlockInitializationForVelocities(double *globalVelocities, int *blockedGlobalPointIDs, int *startOffsetInPoint,
+					double *velocitiesForBig, int startArrayID, int numOfTimePoints, int maxNumOfTimePoints, int globalNumOfPoints, int numOfInterestingBlocks);
+
+/*
 extern "C" void BigBlockInitializationForVelocities(double *globalStartVelocities, double *globalEndVelocities,	int *blockedGlobalPointIDs, int *startOffsetInPoint,
 						double *startVelocitiesForBig, double *endVelocitiesForBig, int numOfInterestingBlocks);
-
+*/
 const char *configurationFile = "RungeKutta4.conf";
 const char *lastPositionFile = "lcsLastPositions.txt";
 const char *FTLEFile = "lcsFTLEValues.vtk";
@@ -128,6 +134,9 @@ int numOfInitialActiveParticles;
 
 // For shared memory
 int maxSharedMemoryRequired;
+
+// For number of time intervals in block
+int numOfIntervalsInBlock;
 
 // CUDA C variables
 
@@ -180,10 +189,10 @@ double *d_pastTimes;
 double *d_placesOfInterest;
 
 // Device memory for velocities
-double *d_velocities[2];
+double *d_velocities;
 
 // Device memory for big blocks
-double *d_vertexPositionsForBig, *d_startVelocitiesForBig, *d_endVelocitiesForBig;
+double *d_vertexPositionsForBig, *d_velocitiesForBig; //*d_startVelocitiesForBig, *d_endVelocitiesForBig;
 
 // Device memory for canFitInSharedMemory flags
 //bool *d_canFitInSharedMemory;
@@ -667,7 +676,7 @@ void DivisionProcess() {
 		blocks[i]->CreateGlobalPointIDs(pointList);
 
 		// Mark whether the block can fit into the shared memory
-		int currentBlockMemoryCost = blocks[i]->EvaluateNumOfBytes();
+		int currentBlockMemoryCost = blocks[i]->EvaluateNumOfBytes(configure->GetNumOfIntervalsInBlock());
 
 		//if (currentBlockMemoryCost <= configure->GetSharedMemoryKilobytes() * 1024) smallEnoughBlocks++;
 		if (currentBlockMemoryCost <= MAX_SHARED_MEMORY_PER_SM) smallEnoughBlocks++;
@@ -785,7 +794,13 @@ void StoreBlocksInDevice() {
 	// Create d_vertexPositionsForBig
 	err = cudaMalloc(&d_vertexPositionsForBig, sizeof(double) * 3 * maxNumOfPoints);
 	if (err) lcs::Error("Fail to create a buffer for device vertexPositionsForBig");
-	
+
+	// Create d_velocitiesForBig
+	numOfIntervalsInBlock = configure->GetNumOfIntervalsInBlock();
+	err = cudaMalloc(&d_velocitiesForBig, sizeof(double) * 3 * maxNumOfPoints * (numOfIntervalsInBlock + 1));
+	if (err) lcs::Error("Fail to create a buffer for device velocitiesForBig");
+
+/*	
 	// Create d_startVelocitiesForBig
 	err = cudaMalloc(&d_startVelocitiesForBig, sizeof(double) * 3 * maxNumOfPoints);
 	if (err) lcs::Error("Fail to create a buffer for device startVelocitiesForBig");
@@ -793,7 +808,7 @@ void StoreBlocksInDevice() {
 	// Create d_endVelocitiesForBig
 	err = cudaMalloc(&d_endVelocitiesForBig, sizeof(double) * 3 * maxNumOfPoints);
 	if (err) lcs::Error("Fail to create a buffer for device endVelocitiesForBig");
-
+*/
 	// Create d_startOffsetInCell
 	err = cudaMalloc(&d_startOffsetInCell, sizeof(int) * (numOfInterestingBlocks + 1));
 	if (err) lcs::Error("Fail to create a buffer for device startOffsetInCell");
@@ -1092,15 +1107,15 @@ void BigBlockInitializationForPositions() {
 	BigBlockInitializationForPositions(d_vertexPositions, d_globalPointIDs, d_startOffsetInPoint, d_vertexPositionsForBig, numOfInterestingBlocks);
 }
 
-void BigBlockInitializationForVelocities(int currStartVIndex) {
-	BigBlockInitializationForVelocities(d_velocities[currStartVIndex], d_velocities[1 - currStartVIndex], d_globalPointIDs, d_startOffsetInPoint,
-			     		d_startVelocitiesForBig, d_endVelocitiesForBig, numOfInterestingBlocks);
+void BigBlockInitializationForVelocities(int currStartVIndex, int numOfFollowers, int module) {
+	BigBlockInitializationForVelocities(d_velocities, d_globalPointIDs, d_startOffsetInPoint,
+			     		d_velocitiesForBig, currStartVIndex, numOfFollowers + 1, module, globalNumOfPoints, numOfInterestingBlocks);
 }
 
 /// DEBUG ///
 double kernelSum;
 
-void LaunchBlockedTracingKernel(int numOfWorkGroups, double beginTime, double finishTime, int blockSize, int sharedMemorySize, int multiple) {
+void LaunchBlockedTracingKernel(int numOfWorkGroups, double beginTime, /*double finishTime,*/ int blockSize, int sharedMemorySize, int multiple, int numOfTimePoints) {
 	//printf("Start to use GPU to process blocked tracing ...\n");
 	//printf("\n");
 
@@ -1111,7 +1126,8 @@ void LaunchBlockedTracingKernel(int numOfWorkGroups, double beginTime, double fi
 				d_localConnectivities, d_localLinks, d_globalCellIDs, d_activeBlocks, // Map active block ID to interesting block ID
 				d_blockOfGroups, d_offsetInBlocks, d_stages, d_lastPositionForRK4, d_k1ForRK4, d_k2ForRK4, d_k3ForRK4, d_pastTimes, d_placesOfInterest,
 				d_startOffsetInParticles, d_blockedActiveParticles, d_localTetIDs, d_exitCells,*/
-				beginTime, finishTime, configure->GetTimeStep(), configure->GetEpsilon(), numOfWorkGroups, blockSize, sharedMemorySize, multiple);
+				beginTime, /*finishTime*/configure->GetTimeInterval(), configure->GetTimeStep(), configure->GetEpsilon(), numOfWorkGroups, blockSize, sharedMemorySize, multiple,
+				numOfTimePoints);
 
 	double endTime = lcs::GetCurrentTimeInSeconds();
 
@@ -1182,26 +1198,26 @@ void InitializeInitialActiveParticles() {
 	InitializeParticleRecordsInDevice();
 }
 
-void InitializeVelocityData(double **velocities) {
+void InitializeVelocityData(double *&velocities) {
 	// Initialize velocity data
-	for (int i = 0; i < 2; i++)
-		velocities[i] = new double [globalNumOfPoints * 3];
+	velocities = new double [globalNumOfPoints * 3];
 
 	// Read velocities[0]
-	frames[0]->GetTetrahedralGrid()->ReadVelocities(velocities[0]);
+	frames[0]->GetTetrahedralGrid()->ReadVelocities(velocities);
 	
-	// Create d_velocities[2]
-	for (int i = 0; i < 2; i++) {
-		err = cudaMalloc(&d_velocities[i], sizeof(double) * 3 * globalNumOfPoints);
-		if (err) lcs::Error("Fail to create buffers for d_velocities[2]");
-	}
+	// Create d_velocities
+	err = cudaMalloc(&d_velocities, sizeof(double) * 3 * globalNumOfPoints * (numOfIntervalsInBlock + 1));
+	if (err) lcs::Error("Fail to create buffers for d_velocities");
 
 	// Initialize d_velocities[0]
-	err = cudaMemcpy(d_velocities[0], velocities[0], sizeof(double) * 3 * globalNumOfPoints, cudaMemcpyHostToDevice);
+	err = cudaMemcpy(d_velocities, velocities, sizeof(double) * 3 * globalNumOfPoints, cudaMemcpyHostToDevice);
 	if (err) lcs::Error("Fail to copy for d_velocities[0]");
 }
 
 void LoadVelocities(double *velocities, double *d_velocities, int frameIdx) {
+	/// DEBUG ///
+	printf("frameIdx = %d\n", frameIdx);
+
 	// Read velocities
 	frames[frameIdx]->GetTetrahedralGrid()->ReadVelocities(velocities);
 	
@@ -1379,8 +1395,8 @@ void Tracing() {
 	InitializeInitialActiveParticles();
 
 	// Initialize velocity data
-	double *velocities[2];
-	int currStartVIndex = 1;
+	double *velocities;
+	int currStartVIndex = 0;//numOfIntervalsInBlock;
 	InitializeVelocityData(velocities);
 
 	// Create some dynamic device arrays
@@ -1433,7 +1449,7 @@ void Tracing() {
 	double interval = configure->GetTimeInterval();
 	
 	InitializeConstantsForBlockedTracingKernelOfRK4(d_vertexPositions, d_tetrahedralConnectivities,
-				d_tetrahedralLinks, d_startOffsetInCell, d_startOffsetInPoint, d_vertexPositionsForBig, d_startVelocitiesForBig, d_endVelocitiesForBig, 
+				d_tetrahedralLinks, d_startOffsetInCell, d_startOffsetInPoint, d_vertexPositionsForBig, d_velocitiesForBig, //d_startVelocitiesForBig, d_endVelocitiesForBig, 
 				d_localConnectivities, d_localLinks, d_globalCellIDs, d_activeBlocks, // Map active block ID to interesting block ID
 				d_blockOfGroups, d_offsetInBlocks, d_stages, d_lastPositionForRK4, d_k1ForRK4, d_k2ForRK4, d_k3ForRK4, d_pastTimes, d_placesOfInterest,
 				d_startOffsetInParticles, d_blockedActiveParticles, d_localTetIDs, d_exitCells, configure->GetTimeStep(), configure->GetEpsilon());
@@ -1447,15 +1463,15 @@ void Tracing() {
 	kernelSum = 0;
 	int numOfKernelCalls = 0;
 
-	for (int frameIdx = 0; frameIdx + 1 < numOfFrames; frameIdx++, currTime += interval) {
-		printf("*********Tracing between frame %d and frame %d*********\n", frameIdx, frameIdx + 1);
+	for (int frameIdx = 0; frameIdx + 1 < numOfFrames; frameIdx += numOfIntervalsInBlock, currTime += interval * numOfIntervalsInBlock) {
+		printf("*********Tracing between frame %d and frame %d*********\n", frameIdx, std::min(frameIdx + numOfIntervalsInBlock, numOfFrames - 1));
 		printf("\n");
 
 		/// DEBUG ///
 		int startTime;
 		startTime = clock();
 
-		currStartVIndex = 1 - currStartVIndex;
+		if (frameIdx) currStartVIndex = (currStartVIndex + numOfIntervalsInBlock) % (numOfIntervalsInBlock + 1);
 
 		// Collect active particles
 		int lastNumOfActiveParticles;
@@ -1466,10 +1482,14 @@ void Tracing() {
 		//printf("numOfActiveParticles = %d\n", lastNumOfActiveParticles);
 
 		// Load end velocities
-		LoadVelocities(velocities[1 - currStartVIndex], d_velocities[1 - currStartVIndex], frameIdx + 1);
+		int numOfIntervals = std::min(numOfIntervalsInBlock, numOfFrames - 1 - frameIdx);
+		printf("numOfIntervals = %d\n", numOfIntervals);
+
+		for (int i = 1; i <= numOfIntervals; i++)
+			LoadVelocities(velocities, d_velocities + ((currStartVIndex + i) % (numOfIntervalsInBlock + 1)) * 3 * globalNumOfPoints, frameIdx + i);
 
 		// Initialize big blocks
-		BigBlockInitializationForVelocities(currStartVIndex);
+		BigBlockInitializationForVelocities(currStartVIndex, numOfIntervals, numOfIntervalsInBlock + 1);
 
 		/// DEBUG ///
 		//printf("BigBlockInitializationForVelocities done.\n");
@@ -1512,7 +1532,7 @@ void Tracing() {
 
 			//printf("numOfWorkGroups = %d\n", numOfWorkGroups);	
 
-			LaunchBlockedTracingKernel(numOfWorkGroups, currTime, currTime + interval, tracingBlockSize, tracingSharedMemorySize, multiple);
+			LaunchBlockedTracingKernel(numOfWorkGroups, currTime, /*currTime + interval,*/ tracingBlockSize, tracingSharedMemorySize, multiple, numOfIntervals + 1);
 		}
 
 		int endTime = clock();

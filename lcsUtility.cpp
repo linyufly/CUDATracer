@@ -112,6 +112,14 @@ lcs::Configure::Configure(const char *fileName) {
 				printf("Done. numOfBanks = %d\n", value);
 				continue;
 			}
+			if (!strcmp(name, "numOfIntervalsInBlock")) {
+				printf("read numOfIntervalsInBlock ... ");
+				int value;
+				if (fscanf(fin, "%d", &value) != 1) lcs::Error("Fail to read \"numOfIntervalsInBlock\"");
+				this->numOfIntervalsInBlock = value;
+				printf("Done. numOfIntervalsInBlock = %d\n", value);
+				continue;
+			}
 			if (!strcmp(name, "timePoints")) {
 				printf("read timePoints ... ");
 				this->timePoints.clear();
@@ -363,6 +371,10 @@ int lcs::Configure::GetBoundingBoxZRes() const {
 
 int lcs::Configure::GetNumOfBanks() const {
 	return this->numOfBanks;
+}
+
+int lcs::Configure::GetNumOfIntervalsInBlock() const {
+	return this->numOfIntervalsInBlock;
 }
 
 double lcs::Configure::GetTimeStep() const {

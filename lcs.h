@@ -1,7 +1,7 @@
 /**********************************************
 File			:		lcs.h
 Author			:		Mingcheng Chen
-Last Update		:		December 22nd, 2012
+Last Update		:		February 25th, 2013
 ***********************************************/
 
 #ifndef __LCS_H
@@ -105,7 +105,7 @@ public:
 	void CreateLocalConnectivities(int *connectivities);
 	void CreateLocalLinks(int *links);
 
-	int EvaluateNumOfBytes() const;
+	int EvaluateNumOfBytes(int numOfIntervals) const;
 
 	int GetGlobalCellID(int localCellID) const;
 	int GetGlobalPointID(int localPointID) const;

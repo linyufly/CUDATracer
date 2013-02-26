@@ -1,7 +1,7 @@
 /*****************************************************
 File		:	lcsBlockedTracingOfRK4.cu
 Author		:	Mingcheng Chen
-Last Update	:	February 19th, 2013
+Last Update	:	February 22nd, 2013
 ******************************************************/
 
 #include <stdio.h>
@@ -18,6 +18,7 @@ __device__ inline double DeterminantThree(double *a) {
 */
 
 __constant__ void *pointers[25];
+__constant__ double *velocitiesForBig;
 __constant__ double timeStep, epsilon;
 //__constant__ double doubleValues[4];
 
@@ -148,38 +149,10 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 
 					int *exitCells,
 */
-					double startTime, double endTime, double timeStep, double epsilon,
+					double startTime, double intervalTime, double timeStep, double epsilon,
+					int sharedMemorySize, int multiple,
 
-					int sharedMemorySize, int multiple) {
-/*
-	cudaError_t err = cudaMemcpyToSymbol(pointers, &globalVertexPositions, sizeOfPointer, 0, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &globalTetrahedralConnectivities, sizeOfPointer, sizeOfPointer, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &globalTetrahedralLinks, sizeOfPointer, sizeOfPointer * 2, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &startOffsetInCell, sizeOfPointer, sizeOfPointer * 3, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &startOffsetInPoint, sizeOfPointer, sizeOfPointer * 4, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &vertexPositionsForBig, sizeOfPointer, sizeOfPointer * 5, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &startVelocitiesForBig, sizeOfPointer, sizeOfPointer * 6, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &endVelocitiesForBig, sizeOfPointer, sizeOfPointer * 7, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &blockedLocalConnectivities, sizeOfPointer, sizeOfPointer * 8, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &blockedLocalLinks, sizeOfPointer, sizeOfPointer * 9, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &blockedGlobalCellIDs, sizeOfPointer, sizeOfPointer * 10, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &activeBlockList, sizeOfPointer, sizeOfPointer * 11, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &blockOfGroups, sizeOfPointer, sizeOfPointer * 12, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &offsetInBlocks, sizeOfPointer, sizeOfPointer * 13, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &stage, sizeOfPointer, sizeOfPointer * 14, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &lastPosition, sizeOfPointer, sizeOfPointer * 15, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &k1, sizeOfPointer, sizeOfPointer * 16, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &k2, sizeOfPointer, sizeOfPointer * 17, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &k3, sizeOfPointer, sizeOfPointer * 18, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &pastTimes, sizeOfPointer * 19, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &placesOfInterest, sizeOfPointer, sizeOfPointer * 20, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &startOffsetInParticle, sizeOfPointer, sizeOfPointer * 21, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &blockedActiveParticleIDList, sizeOfPointer, sizeOfPointer * 22, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &cellLocations, sizeOfPointer, sizeOfPointer * 23, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &exitCells, sizeOfPointer, sizeOfPointer * 24, cudaMemcpyHostToDevice) |
-*/
-
-
+					int numOfTimePoints) {
 	__shared__ extern char sharedMemory[];
 	//char *sharedMemory;
 
@@ -204,8 +177,7 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 
 	// Declare some arrays
 	double *vertexPositions;
-	double *startVelocities;
-	double *endVelocities;
+	double *localVelocities;
 	int *connectivities;
 	int *links;
 
@@ -228,24 +200,27 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 	//	 localNumOfPoints * sizeof(double) * 3 +	// point positions
 	//	 localNumOfPoints * sizeof(double) * 3 * 2;	// point velocities (start and end)
 
-	if (((numOfCells << 5) + ((numOfPoints * 9) << 3)) <= sharedMemorySize) { // This branch fills in the shared memory
+	//if (((numOfCells << 5) + ((numOfPoints * 9) << 3)) <= sharedMemorySize) { // This branch fills in the shared memory
+	if ((numOfCells << 5) + ((numOfPoints * 3 * (1 + numOfTimePoints)) << 3) /* + ((numOfPoints * 3 * numOfTimePoints) << 3) */ <= sharedMemorySize) {
 		// Initialize vertexPositions, startVelocities and endVelocities
 		vertexPositions = (double *)sharedMemory;
-		startVelocities = vertexPositions + numOfPoints * 3;
-		endVelocities = startVelocities + numOfPoints * 3;
+		localVelocities = vertexPositions + numOfPoints * 3;
 
 		// Initialize connectivities and links
-		connectivities = (int *)(endVelocities + numOfPoints * 3);
+		connectivities = (int *)(localVelocities + numOfPoints * 3 * numOfTimePoints);
 		links = connectivities + (numOfCells << 2);
 
 		for (/*int*/ i = threadIdx.x/*localID*/; i < numOfPoints * 3; i += blockDim.x/*numOfThreads*/) {
 			vertexPositions[i] = ((double *)pointers[5])[idx/*startPoint * 3*/ + i];
-			startVelocities[i] = ((double *)pointers[6])[idx/*startPoint * 3*/ + i];
-			endVelocities[i] = ((double *)pointers[7])[idx/*startPoint * 3*/ + i];
+			//startVelocities[i] = ((double *)pointers[6])[idx/*startPoint * 3*/ + i];
+			//endVelocities[i] = ((double *)pointers[7])[idx/*startPoint * 3*/ + i];
 			//vertexPositions[i] = vertexPositionsForBig[startPoint * 3 + i];
 			//startVelocities[i] = startVelocitiesForBig[startPoint * 3 + i];
 			//endVelocities[i] = endVelocitiesForBig[startPoint * 3 + i];
 		}
+
+		for (i = threadIdx.x; i < numOfPoints * 3 * numOfTimePoints; i += blockDim.x)
+			localVelocities[i] = velocitiesForBig[idx * numOfTimePoints + i];
 
 		for (/*int*/ i = threadIdx.x/*localID*/; i < (numOfCells << 2); i += blockDim.x/*numOfThreads*/) {
 			connectivities[i] = ((int *)pointers[8])[(startCell << 2) + i];
@@ -258,8 +233,9 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 	} else { // This branch fills in the global memory
 		// Initialize vertexPositions, startVelocities and endVelocities
 		vertexPositions = (double *)pointers[5] + idx/*startPoint * 3*/;
-		startVelocities = (double *)pointers[6] + idx/*startPoint * 3*/;
-		endVelocities = (double *)pointers[7] + idx/*startPoint * 3*/;
+		localVelocities = velocitiesForBig + idx * numOfTimePoints;
+		//startVelocities = (double *)pointers[6] + idx/*startPoint * 3*/;
+		//endVelocities = (double *)pointers[7] + idx/*startPoint * 3*/;
 		//vertexPositions = vertexPositionsForBig + startPoint * 3;
 		//startVelocities = startVelocitiesForBig + startPoint * 3;
 		//endVelocities = endVelocitiesForBig + startPoint * 3;
@@ -280,6 +256,7 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 
 	int activeParticleID, currStage, currCell, nextCell;
 	//int nextGlobalCell;
+	int intervalID;
 
 	double currTime;
 	double currLastPosition[3], currK1[3], currK2[3], currK3[3], currK4[3];
@@ -376,7 +353,9 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 				nextCell = FindCell(placeOfInterest, connectivities, links, vertexPositions, /*doubleValues[3]*/epsilon, currCell, coordinates,
 							vecX, vecY, vecZ);
 
-				if (nextCell == -1 || currTime >= /*doubleValues[1]*/endTime) {
+				intervalID = (int)((currTime - startTime) / intervalTime);
+
+				if (nextCell == -1 || intervalID >= numOfTimePoints - 1) { //currTime >= /*doubleValues[1]*/endTime) {
 					// Find the next cell globally
 					//int globalCellID = ((int *)pointers[10])[startCell + currCell];
 					//int globalCellID = blockedGlobalCellIDs[startCell + currCell];
@@ -393,7 +372,8 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 						//			globalTetrahedralLinks, globalVertexPositions,
 						//			epsilon, globalCellID, coordinates);
 
-					if (currTime >= /*doubleValues[1]*/endTime && nextCell/*nextGlobalCell*/ != -1) nextCell = -2 - nextCell;//nextGlobalCell = -2 - nextGlobalCell;
+					//if (currTime >= /*doubleValues[1]*/endTime
+					if (intervalID >= numOfTimePoints - 1 && nextCell/*nextGlobalCell*/ != -1) nextCell = -2 - nextCell;//nextGlobalCell = -2 - nextGlobalCell;
 
 					((double *)pointers[19])[activeParticleID] = currTime;
 					//pastTimes[activeParticleID] = currTime;
@@ -456,18 +436,35 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 				case 3: alpha /*exactTime*/ += /*doubleValues[2]*/timeStep; break;
 				}
 
-				/*double*/ alpha = (/*doubleValues[1]*/endTime - alpha/*exactTime*/) / (/*doubleValues[1]*/endTime - /*doubleValues[0]*/startTime);
+				/*double*/ alpha = (/*doubleValues[1]*//*endTime*/startTime + intervalTime * (intervalID + 1) - alpha/*exactTime*/) / intervalTime;
+						   //(/*doubleValues[1]*/endTime - /*doubleValues[0]*//*startTime*/(startTime + intervalTime * (intervalID + 1));
 				/*double*/ beta = 1.0 - alpha;
 
 				/*double vecX[4], vecY[4], vecZ[4];*/
 
 				for (/*int*/ i = 0; i < 4; i++) {
 					//int pointID = connectivities[(nextCell << 2) | i];
-					nextCell = connectivities[(currCell << 2) | i] * 3;
+					//nextCell = (connectivities[(currCell << 2) | i] * numOfTimePoints + intervalID) * 3;
+					nextCell = connectivities[(currCell << 2) | i];
+					nextCell = 3 * (numOfTimePoints * nextCell + intervalID);
 
-					vecX[i] = startVelocities[nextCell] * alpha + endVelocities[nextCell] * beta;
-					vecY[i] = startVelocities[nextCell + 1] * alpha + endVelocities[nextCell + 1] * beta;
-					vecZ[i] = startVelocities[nextCell + 2] * alpha + endVelocities[nextCell + 2] * beta;
+					vecX[i] = localVelocities[nextCell] * alpha + localVelocities[nextCell + 3] * beta;
+					//vecX[i] = localVelocities[nextCell + intervalID * 3] * alpha +
+					//	  localVelocities[nextCell + intervalID * 3 + 3] * beta;
+
+					//vecX[i] = startVelocities[nextCell] * alpha + endVelocities[nextCell] * beta;
+
+					vecY[i] = localVelocities[nextCell + 1] * alpha + localVelocities[nextCell + 4] * beta;
+					//vecY[i] = localVelocities[nextCell + intervalID * 3 + 1] * alpha +
+					//	  localVelocities[nextCell + intervalID * 3 + 4] * beta;
+
+					//vecY[i] = startVelocities[nextCell + 1] * alpha + endVelocities[nextCell + 1] * beta;
+
+					vecZ[i] = localVelocities[nextCell + 2] * alpha + localVelocities[nextCell + 5] * beta;
+					//vecZ[i] = localVelocities[nextCell + intervalID * 3 + 2] * alpha +
+					//	  localVelocities[nextCell + intervalID * 3 + 5] * beta;
+
+					//vecZ[i] = startVelocities[nextCell + 2] * alpha + endVelocities[nextCell + 2] * beta;
 
 					//vecX[i] = startVelocities[pointID * 3] * alpha + endVelocities[pointID * 3] * beta;
 					//vecY[i] = startVelocities[pointID * 3 + 1] * alpha + endVelocities[pointID * 3 + 1] * beta;
@@ -519,8 +516,10 @@ void InitializeConstantsForBlockedTracingKernelOfRK4(double *globalVertexPositio
 			int *startOffsetInPoint,
 
 			double *vertexPositionsForBig,
-			double *startVelocitiesForBig,
-			double *endVelocitiesForBig,
+			double *deviceVelocitiesForBig,
+
+			//double *startVelocitiesForBig,
+			//double *endVelocitiesForBig,
 
 			int *blockedLocalConnectivities,
 			int *blockedLocalLinks,
@@ -545,7 +544,7 @@ void InitializeConstantsForBlockedTracingKernelOfRK4(double *globalVertexPositio
 			int *cellLocations,
 
 			int *exitCells,
-
+	
 			double hostTimeStep, double hostEpsilon) {
 	int sizeOfPointer = sizeof(void *);
 
@@ -555,8 +554,9 @@ void InitializeConstantsForBlockedTracingKernelOfRK4(double *globalVertexPositio
 			  cudaMemcpyToSymbol(pointers, &startOffsetInCell, sizeOfPointer, sizeOfPointer * 3, cudaMemcpyHostToDevice) |
 			  cudaMemcpyToSymbol(pointers, &startOffsetInPoint, sizeOfPointer, sizeOfPointer * 4, cudaMemcpyHostToDevice) |
 			  cudaMemcpyToSymbol(pointers, &vertexPositionsForBig, sizeOfPointer, sizeOfPointer * 5, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &startVelocitiesForBig, sizeOfPointer, sizeOfPointer * 6, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &endVelocitiesForBig, sizeOfPointer, sizeOfPointer * 7, cudaMemcpyHostToDevice) |
+			  //cudaMemcpyToSymbol(pointers, &deviceVelocitiesForBig, sizeOfPointer, sizeOfPointer * 6, cudaMemcpyHostToDevice) |
+			  //cudaMemcpyToSymbol(pointers, &startVelocitiesForBig, sizeOfPointer, sizeOfPointer * 6, cudaMemcpyHostToDevice) |
+			  //cudaMemcpyToSymbol(pointers, &endVelocitiesForBig, sizeOfPointer, sizeOfPointer * 7, cudaMemcpyHostToDevice) |
 			  cudaMemcpyToSymbol(pointers, &blockedLocalConnectivities, sizeOfPointer, sizeOfPointer * 8, cudaMemcpyHostToDevice) |
 			  cudaMemcpyToSymbol(pointers, &blockedLocalLinks, sizeOfPointer, sizeOfPointer * 9, cudaMemcpyHostToDevice) |
 			  cudaMemcpyToSymbol(pointers, &blockedGlobalCellIDs, sizeOfPointer, sizeOfPointer * 10, cudaMemcpyHostToDevice) |
@@ -574,6 +574,7 @@ void InitializeConstantsForBlockedTracingKernelOfRK4(double *globalVertexPositio
 			  cudaMemcpyToSymbol(pointers, &blockedActiveParticleIDList, sizeOfPointer, sizeOfPointer * 22, cudaMemcpyHostToDevice) |
 			  cudaMemcpyToSymbol(pointers, &cellLocations, sizeOfPointer, sizeOfPointer * 23, cudaMemcpyHostToDevice) |
 			  cudaMemcpyToSymbol(pointers, &exitCells, sizeOfPointer, sizeOfPointer * 24, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(velocitiesForBig, &deviceVelocitiesForBig, sizeOfPointer, 0, cudaMemcpyHostToDevice) |
 			  cudaMemcpyToSymbol(timeStep, &hostTimeStep, sizeof(double), 0, cudaMemcpyHostToDevice) |
 			  cudaMemcpyToSymbol(epsilon, &hostEpsilon, sizeof(double), 0, cudaMemcpyHostToDevice));
 /*
@@ -624,9 +625,10 @@ void BlockedTracingOfRK4(/*double *globalVertexPositions,
 
 			int *exitCells,*/
 
-			double startTime, double endTime, double timeStep, double epsilon, int numOfActiveBlocks,
+			double startTime, double intervalTime, double timeStep, double epsilon, int numOfActiveBlocks,
+			int blockSize, int sharedMemorySize, int multiple,
 
-			int blockSize, int sharedMemorySize, int multiple) {
+			int numOfTimePoints) {
 	dim3 dimBlock(blockSize, 1, 1);
 	dim3 dimGrid(numOfActiveBlocks, 1, 1);
 
@@ -665,9 +667,10 @@ void BlockedTracingOfRK4(/*double *globalVertexPositions,
 
 					exitCells,
 */
-					startTime, endTime, timeStep, epsilon,
+					startTime, intervalTime, timeStep, epsilon,
+					sharedMemorySize, multiple,
 
-					sharedMemorySize, multiple);
+					numOfTimePoints);
 
 	cudaError_t err = cudaDeviceSynchronize();
 	if (err) {

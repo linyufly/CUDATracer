@@ -1,7 +1,7 @@
 /**********************************************
 File			:		lcs.cpp
 Author			:		Mingcheng Chen
-Last Update		:		December 22nd, 2012
+Last Update		:		February 25th, 2013
 ***********************************************/
 
 #include "lcs.h"
@@ -275,11 +275,11 @@ void lcs::BlockRecord::CreateLocalLinks(int *links) {
 	memcpy(this->localLinks, links, sizeof(int) * this->localNumOfCells * 4);
 }
 
-int lcs::BlockRecord::EvaluateNumOfBytes() const {
-	return this->localNumOfCells * sizeof(int) * 4 +		// this->localConnectivities
-		   this->localNumOfCells * sizeof(int) * 4 +		// this->localLinks
-		   this->localNumOfPoints * sizeof(double) * 3 +	// point positions
-		   this->localNumOfPoints * sizeof(double) * 3 * 2;	// point velocities (start and end)
+int lcs::BlockRecord::EvaluateNumOfBytes(int numOfIntervals) const {
+	return this->localNumOfCells * sizeof(int) * 4 +				// this->localConnectivities
+		   this->localNumOfCells * sizeof(int) * 4 +				// this->localLinks
+		   this->localNumOfPoints * sizeof(double) * 3 +			// point positions
+		   this->localNumOfPoints * sizeof(double) * 3 * (numOfIntervals + 1);	// point velocities (start and end)
 }
 
 int lcs::BlockRecord::GetGlobalCellID(int localCellID) const {

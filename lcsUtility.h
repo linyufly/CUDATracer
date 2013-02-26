@@ -1,7 +1,7 @@
 /**********************************************
 File		:	lcsUtility.h
 Author		:	Mingcheng Chen
-Last Update	:	January 29th, 2013
+Last Update	:	February 20th, 2013
 ***********************************************/
 
 #ifndef __LCS_UTILITY_H
@@ -33,6 +33,7 @@ public:
 	int GetBoundingBoxYRes() const;
 	int GetBoundingBoxZRes() const;
 	int GetNumOfBanks() const;
+	int GetNumOfIntervalsInBlock() const;
 	double GetTimeStep() const;
 	double GetBlockSize() const;
 	double GetTimeInterval() const;
@@ -65,6 +66,7 @@ private:
 	int boundingBoxYRes;
 	int boundingBoxZRes;
 	int numOfBanks;
+	int numOfIntervalsInBlock;
 	std::vector<double> timePoints;
 	std::string dataFilePrefix;
 	std::string dataFileSuffix;
