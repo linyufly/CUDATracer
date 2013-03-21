@@ -251,7 +251,7 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 			//links[i] = blockedLocalLinks[(startCell << 2) + i];
 		}
 
-		//__syncthreads();
+		__syncthreads();
 	} else { // This branch fills in the global memory
 		// Initialize vertexPositions, startVelocities and endVelocities
 		vertexPositions = (double *)pointers[5] + idx/*startPoint * 3*/;
@@ -268,7 +268,7 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 		//links = blockedLocalLinks + (startCell << 2);
 	}
 
-	__syncthreads();
+	//__syncthreads();
 
 	int numOfActiveParticles = ((int *)pointers[21])[activeBlockID + 1] - ((int *)pointers[21])[activeBlockID];
 	/*int*/ offset = ((int *)pointers[13])[blockIdx.x/*groupID*/] * blockDim.x/*numOfThreads*/ * multiple;
