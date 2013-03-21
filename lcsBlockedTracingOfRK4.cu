@@ -1,7 +1,7 @@
 /*****************************************************
 File		:	lcsBlockedTracingOfRK4.cu
 Author		:	Mingcheng Chen
-Last Update	:	February 19th, 2013
+Last Update	:	March 20th, 2013
 ******************************************************/
 
 #include <stdio.h>
@@ -178,8 +178,6 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 			  cudaMemcpyToSymbol(pointers, &cellLocations, sizeOfPointer, sizeOfPointer * 23, cudaMemcpyHostToDevice) |
 			  cudaMemcpyToSymbol(pointers, &exitCells, sizeOfPointer, sizeOfPointer * 24, cudaMemcpyHostToDevice) |
 */
-
-
 	__shared__ extern char sharedMemory[];
 	//char *sharedMemory;
 
@@ -227,7 +225,6 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 	//	 localNumOfCells * sizeof(int) * 4 +		// this->localLinks
 	//	 localNumOfPoints * sizeof(double) * 3 +	// point positions
 	//	 localNumOfPoints * sizeof(double) * 3 * 2;	// point velocities (start and end)
-
 	if (((numOfCells << 5) + ((numOfPoints * 9) << 3)) <= sharedMemorySize) { // This branch fills in the shared memory
 		// Initialize vertexPositions, startVelocities and endVelocities
 		vertexPositions = (double *)sharedMemory;
@@ -282,13 +279,13 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 	//int nextGlobalCell;
 
 	double currTime;
-	double currLastPosition[3], currK1[3], currK2[3], currK3[3], currK4[3];
+	double currLastPosition[3], currK[3], currNX[3]; //currK2[3], currK3[3], currK4[3];
 	double placeOfInterest[3];
 	double coordinates[4];
 	double alpha, beta;
 
 	double vecX[4], vecY[4], vecZ[4];
-	double *currK;
+	//double *currK;
 
 	for (idx = threadIdx.x/*localID*/; idx < blockDim.x/*numOfThreads*/ * multiple; idx += blockDim.x/*numOfThreads*/) {
 		//int arrayIdx = offsetInBlocks[groupID] * numOfThreads + localID;
@@ -321,6 +318,8 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 			//currLastPosition[1] = lastPosition[activeParticleID * 3 + 1];
 			//currLastPosition[2] = lastPosition[activeParticleID * 3 + 2];
 			/*double currK1[3], currK2[3], currK3[3], currK4[3];*/
+
+			/*
 			if (currStage > 0) {
 				currK1[0] = ((double *)pointers[16])[activeParticleID * 3];
 				currK1[1] = ((double *)pointers[16])[activeParticleID * 3 + 1];
@@ -345,6 +344,14 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 				//currK3[1] = k3[activeParticleID * 3 + 1];
 				//currK3[2] = k3[activeParticleID * 3 + 2];
 			}
+			*/
+			currK[0] = ((double *)pointers[16])[activeParticleID * 3];
+			currK[1] = ((double *)pointers[16])[activeParticleID * 3 + 1];
+			currK[2] = ((double *)pointers[16])[activeParticleID * 3 + 2];
+
+			currNX[0] = ((double *)pointers[17])[activeParticleID * 3];
+			currNX[1] = ((double *)pointers[17])[activeParticleID * 3 + 1];
+			currNX[2] = ((double *)pointers[17])[activeParticleID * 3 + 2];
 
 			// At least one loop is executed.
 			while (true) {
@@ -352,21 +359,22 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 				placeOfInterest[0] = currLastPosition[0];
 				placeOfInterest[1] = currLastPosition[1];
 				placeOfInterest[2] = currLastPosition[2];
+
 				switch (currStage) {
 				case 1: {
-					placeOfInterest[0] += 0.5 * currK1[0];
-					placeOfInterest[1] += 0.5 * currK1[1];
-					placeOfInterest[2] += 0.5 * currK1[2];
+					placeOfInterest[0] += 0.5 * currK[0];
+					placeOfInterest[1] += 0.5 * currK[1];
+					placeOfInterest[2] += 0.5 * currK[2];
 					} break;
 				case 2: {
-					placeOfInterest[0] += 0.5 * currK2[0];
-					placeOfInterest[1] += 0.5 * currK2[1];
-					placeOfInterest[2] += 0.5 * currK2[2];
+					placeOfInterest[0] += 0.5 * currK[0];
+					placeOfInterest[1] += 0.5 * currK[1];
+					placeOfInterest[2] += 0.5 * currK[2];
 					} break;
 				case 3: {
-					placeOfInterest[0] += currK3[0];
-					placeOfInterest[1] += currK3[1];
-					placeOfInterest[2] += currK3[2];
+					placeOfInterest[0] += currK[0];
+					placeOfInterest[1] += currK[1];
+					placeOfInterest[2] += currK[2];
 					} break;
 				}
 
@@ -417,7 +425,8 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 
 					((int *)pointers[24])[activeParticleID] = nextCell;//nextGlobalCell;
 					//exitCells[activeParticleID] = nextGlobalCell;
-		
+
+					/*
 					if (currStage > 0) { // currStage > 0
 						((double *)pointers[16])[activeParticleID * 3] = currK1[0];
 						((double *)pointers[16])[activeParticleID * 3 + 1] = currK1[1];
@@ -441,8 +450,15 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 						//k3[activeParticleID * 3] = currK3[0];
 						//k3[activeParticleID * 3 + 1] = currK3[1];
 						//k3[activeParticleID * 3 + 2] = currK3[2];
-					}
-					
+					}*/
+					((double *)pointers[16])[activeParticleID * 3] = currK[0];
+					((double *)pointers[16])[activeParticleID * 3 + 1] = currK[1];
+					((double *)pointers[16])[activeParticleID * 3 + 2] = currK[2];
+
+					((double *)pointers[17])[activeParticleID * 3] = currNX[0];
+					((double *)pointers[17])[activeParticleID * 3 + 1] = currNX[1];
+					((double *)pointers[17])[activeParticleID * 3 + 2] = currNX[2];
+
 					break;
 				}
 
@@ -475,12 +491,13 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 				}
 
 				/*double *currK;*/
+				/*
 				switch (currStage) {
 				case 0: currK = currK1; break;
 				case 1: currK = currK2; break;
 				case 2: currK = currK3; break;
 				case 3: currK = currK4; break;
-				}
+				}*/
 
 				currK[0] = currK[1] = currK[2] = 0;
 
@@ -494,11 +511,21 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 				currK[1] *= /*doubleValues[2]*/timeStep;
 				currK[2] *= /*doubleValues[2]*/timeStep;
 
+				switch (currStage) {
+				case 0:
+				case 3: alpha = 1.0 / 6; break;
+				case 1:
+				case 2: alpha = 1.0 / 3; break;
+				}
+				for (i = 0; i < 3; i++)
+					currNX[i] += alpha * currK[i];
+
 				if (currStage == 3) {
 					currTime += /*doubleValues[2]*/timeStep;
 
 					for (/*int*/ i = 0; i < 3; i++)
-						currLastPosition[i] += (currK1[i] + 2.0 * (currK2[i] + currK3[i]) + currK4[i]) / 6.0;
+						currLastPosition[i] = currNX[i];
+						//currLastPosition[i] += (currK1[i] + 2.0 * (currK2[i] + currK3[i]) + currK4[i]) / 6.0;
 
 					currStage = 0;
 				} else
@@ -533,9 +560,11 @@ void InitializeConstantsForBlockedTracingKernelOfRK4(double *globalVertexPositio
 
 			int *stage,
 			double *lastPosition,
-			double *k1,
-			double *k2,
-			double *k3,
+
+			double *k, double *nx,
+
+			//double *k2,
+			//double *k3,
 			double *pastTimes,
 
 			double *placesOfInterest,
@@ -565,9 +594,10 @@ void InitializeConstantsForBlockedTracingKernelOfRK4(double *globalVertexPositio
 			  cudaMemcpyToSymbol(pointers, &offsetInBlocks, sizeOfPointer, sizeOfPointer * 13, cudaMemcpyHostToDevice) |
 			  cudaMemcpyToSymbol(pointers, &stage, sizeOfPointer, sizeOfPointer * 14, cudaMemcpyHostToDevice) |
 			  cudaMemcpyToSymbol(pointers, &lastPosition, sizeOfPointer, sizeOfPointer * 15, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &k1, sizeOfPointer, sizeOfPointer * 16, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &k2, sizeOfPointer, sizeOfPointer * 17, cudaMemcpyHostToDevice) |
-			  cudaMemcpyToSymbol(pointers, &k3, sizeOfPointer, sizeOfPointer * 18, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(pointers, &k, sizeOfPointer, sizeOfPointer * 16, cudaMemcpyHostToDevice) |
+			  cudaMemcpyToSymbol(pointers, &nx, sizeOfPointer, sizeOfPointer * 17, cudaMemcpyHostToDevice) |
+			  //cudaMemcpyToSymbol(pointers, &k2, sizeOfPointer, sizeOfPointer * 17, cudaMemcpyHostToDevice) |
+			  //cudaMemcpyToSymbol(pointers, &k3, sizeOfPointer, sizeOfPointer * 18, cudaMemcpyHostToDevice) |
 			  cudaMemcpyToSymbol(pointers, &pastTimes, sizeOfPointer, sizeOfPointer * 19, cudaMemcpyHostToDevice) |
 			  cudaMemcpyToSymbol(pointers, &placesOfInterest, sizeOfPointer, sizeOfPointer * 20, cudaMemcpyHostToDevice) |
 			  cudaMemcpyToSymbol(pointers, &startOffsetInParticle, sizeOfPointer, sizeOfPointer * 21, cudaMemcpyHostToDevice) |
@@ -629,6 +659,9 @@ void BlockedTracingOfRK4(/*double *globalVertexPositions,
 			int blockSize, int sharedMemorySize, int multiple) {
 	dim3 dimBlock(blockSize, 1, 1);
 	dim3 dimGrid(numOfActiveBlocks, 1, 1);
+
+	/// DEBUG ///
+	//cudaFuncSetCacheConfig(BlockedTracingKernelOfRK4, cudaFuncCachePreferShared);
 
 	BlockedTracingKernelOfRK4<<<dimGrid, dimBlock, sharedMemorySize>>>(/*globalVertexPositions,
 					globalTetrahedralConnectivities,
