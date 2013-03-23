@@ -136,6 +136,13 @@ public:
 
 	~TetrahedralGrid() {
 		if (vertices) delete [] vertices;
+		if (velocities) delete [] velocities;
+		if (tetrahedralConnectivities) delete [] tetrahedralConnectivities;
+		if (tetrahedralLinks) delete [] tetrahedralLinks;
+	}
+
+	void CleanAllButVelocities() {
+		if (vertices) delete [] vertices;
 		if (tetrahedralConnectivities) delete [] tetrahedralConnectivities;
 		if (tetrahedralLinks) delete [] tetrahedralLinks;
 	}

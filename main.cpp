@@ -1,7 +1,7 @@
 /**********************************************
 File		:	main.cpp
 Author		:	Mingcheng Chen
-Last Update	:	March 20th, 2013
+Last Update	:	March 22nd, 2013
 ***********************************************/
 
 #include "lcs.h"
@@ -10,6 +10,7 @@ Last Update	:	March 20th, 2013
 #include "lcsGeometry.h"
 
 #include <ctime>
+#include <cstdio>
 #include <string>
 #include <algorithm>
 #include <cuda_runtime.h>
@@ -249,6 +250,7 @@ void LoadFrames() {
 		std::string veloFileName = configure->GetDataFilePrefix() + configure->GetDataFileIndices()[i] + "." + configure->GetDataFileSuffix();
 		printf("Loading frame %d (file = %s) ... ", i, veloFileName.c_str());
 		frames[i] = new lcs::Frame(timePoint, "patient2/geometry.txt", veloFileName.c_str());
+		if (i) frames[i]->GetTetrahedralGrid()->CleanAllButVelocities();
 		printf("Done.\n");
 	}
 	printf("\n");
@@ -1099,6 +1101,7 @@ void BigBlockInitializationForVelocities(int currStartVIndex) {
 
 /// DEBUG ///
 double kernelSum;
+double kernelSumInInterval;
 
 void LaunchBlockedTracingKernel(int numOfWorkGroups, double beginTime, double finishTime, int blockSize, int sharedMemorySize, int multiple) {
 	//printf("Start to use GPU to process blocked tracing ...\n");
@@ -1117,6 +1120,7 @@ void LaunchBlockedTracingKernel(int numOfWorkGroups, double beginTime, double fi
 
 	/// DEBUG ///
 	kernelSum += endTime - startTime;
+	kernelSumInInterval += endTime - startTime;
 
 	//printf("The GPU Kernel for blocked tracing cost %lf sec.\n", endTime - startTime);
 	//printf("\n");
@@ -1367,8 +1371,7 @@ void CalculateBlockSizeAndSharedMemorySizeForTracingKernel(double averageParticl
 	//printf("tracingBlockSize = %d, tracingSharedMemorySize = %d, multiple = %d\n", tracingBlockSize, tracingSharedMemorySize, multiple);
 }
 
-/// DEBUG ///
-void GetFinalPositions();
+void GetLastPositions(const char *);
 
 void Tracing() {
 	// Initialize d_tetrahedralLinks
@@ -1452,6 +1455,11 @@ void Tracing() {
 	int numOfKernelCalls = 0;
 
 	for (int frameIdx = 0; frameIdx + 1 < numOfFrames; frameIdx++, currTime += interval) {
+		/// DEBUG ///
+		//char fileName[100];
+		//sprintf(fileName, "lcsPositions%02d.txt", frameIdx);
+		//GetLastPositions(fileName);
+
 		printf("*********Tracing between frame %d and frame %d*********\n", frameIdx, frameIdx + 1);
 		printf("\n");
 
@@ -1467,7 +1475,7 @@ void Tracing() {
 		lastNumOfActiveParticles = CollectActiveParticlesForNewInterval(d_activeParticles[currActiveParticleArray]);
 
 		/// DEBUG ///
-		//printf("numOfActiveParticles = %d\n", lastNumOfActiveParticles);
+		printf("numOfActiveParticles = %d\n", lastNumOfActiveParticles);
 
 		// Load end velocities
 		LoadVelocities(velocities[1 - currStartVIndex], d_velocities[1 - currStartVIndex], frameIdx + 1);
@@ -1477,6 +1485,8 @@ void Tracing() {
 
 		/// DEBUG ///
 		//printf("BigBlockInitializationForVelocities done.\n");
+
+		kernelSumInInterval = 0;
 
 		while (true) {
 			// Get active particles
@@ -1521,6 +1531,7 @@ void Tracing() {
 
 		int endTime = clock();
 		printf("This interval cost %lf sec.\n", (double)(endTime - startTime) / CLOCKS_PER_SEC);
+		printf("kernelSumInInterval = %lf sec.\n", kernelSumInInterval);
 		printf("\n");
 	}
 
@@ -1538,7 +1549,7 @@ void Tracing() {
 	printf("\n");
 }
 
-void GetFinalPositions() {
+void GetLastPositions(const char *fileName) {
 	finalPositions = new double [numOfInitialActiveParticles * 3];
 	
 	switch (lcs::ParticleRecord::GetDataType()) {
@@ -1547,7 +1558,7 @@ void GetFinalPositions() {
 	} break;
 	}
 
-	FILE *fout = fopen(lastPositionFile, "w");
+	FILE *fout = fopen(fileName, "w");
 	for (int i = 0; i < numOfInitialActiveParticles; i++) {
 		int gridPointID = particleRecords[i]->GetGridPointID();
 		int z = gridPointID % (configure->GetBoundingBoxZRes() + 1);
@@ -1646,7 +1657,7 @@ int main() {
 	Tracing();
 
 	// Get final positions for initial active particles
-	GetFinalPositions();
+	GetLastPositions(lastPositionFile);
 
 	// Calucate FTLE values
 	//CalculateFTLE();

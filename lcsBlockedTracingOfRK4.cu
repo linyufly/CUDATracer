@@ -6,6 +6,8 @@ Last Update	:	March 20th, 2013
 
 #include <stdio.h>
 
+//#define USE_CACHE
+
 /*
 __device__ inline double DeterminantThree(double *a) {
 	// a[0] a[1] a[2]
@@ -181,7 +183,11 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 			  cudaMemcpyToSymbol(pointers, &cellLocations, sizeOfPointer, sizeOfPointer * 23, cudaMemcpyHostToDevice) |
 			  cudaMemcpyToSymbol(pointers, &exitCells, sizeOfPointer, sizeOfPointer * 24, cudaMemcpyHostToDevice) |
 */
+
+#ifndef USE_CACHE
 	__shared__ extern char sharedMemory[];
+#endif
+
 	//char *sharedMemory;
 
 	// Get work group ID
@@ -228,6 +234,8 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 	//	 localNumOfCells * sizeof(int) * 4 +		// this->localLinks
 	//	 localNumOfPoints * sizeof(double) * 3 +	// point positions
 	//	 localNumOfPoints * sizeof(double) * 3 * 2;	// point velocities (start and end)
+
+#ifndef USE_CACHE
 	if (((numOfCells << 5) + ((numOfPoints * 9) << 3)) <= sharedMemorySize) { // This branch fills in the shared memory
 		// Initialize vertexPositions, startVelocities and endVelocities
 		vertexPositions = (double *)sharedMemory;
@@ -255,7 +263,9 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 		}
 
 		__syncthreads();
-	} else { // This branch fills in the global memory
+	} else
+#endif
+	{ // This branch fills in the global memory
 		// Initialize vertexPositions, startVelocities and endVelocities
 		vertexPositions = (double *)pointers[5] + idx/*startPoint * 3*/;
 		startVelocities = (double *)pointers[6] + idx/*startPoint * 3*/;
@@ -464,7 +474,6 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 
 				/*double*/ alpha /*exactTime*/ = currTime;
 				switch (currStage) {
-				case 0: break;
 				case 1:
 				case 2: alpha /*exactTime*/ += /*doubleValues[2]*/timeStep * 0.5; break;
 				case 3: alpha /*exactTime*/ += /*doubleValues[2]*/timeStep; break;
@@ -515,9 +524,9 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 				case 1:
 				case 2: alpha = 1.0 / 3; break;
 				}
+
 				for (i = 0; i < 3; i++)
 					currNX[i] += alpha * currK[i];
-
 				if (currStage == 3) {
 					currTime += /*doubleValues[2]*/timeStep;
 
@@ -527,7 +536,7 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 
 					currStage = 0;
 				} else
-					currStage++;
+					currStage++;	
 			}
 		} else break;
 
@@ -661,10 +670,18 @@ void BlockedTracingOfRK4(/*double *globalVertexPositions,
 	cudaMemcpyToSymbol(sharedMemorySize, &__sharedMemorySize, sizeof(int), 0, cudaMemcpyHostToDevice);
 	cudaMemcpyToSymbol(multiple, &__multiple, sizeof(int), 0, cudaMemcpyHostToDevice);
 
-	/// DEBUG ///
-	//cudaFuncSetCacheConfig(BlockedTracingKernelOfRK4, cudaFuncCachePreferShared);
+#ifdef USE_CACHE
+	cudaFuncSetCacheConfig(BlockedTracingKernelOfRK4, cudaFuncCachePreferL1);
+#else
+	cudaFuncSetCacheConfig(BlockedTracingKernelOfRK4, cudaFuncCachePreferShared);
+#endif
 
-	BlockedTracingKernelOfRK4<<<dimGrid, dimBlock, __sharedMemorySize>>>(/*globalVertexPositions,
+#ifdef USE_CACHE
+	BlockedTracingKernelOfRK4<<<dimGrid, dimBlock>>>(
+#else
+	BlockedTracingKernelOfRK4<<<dimGrid, dimBlock, __sharedMemorySize>>>(
+#endif
+					/*globalVertexPositions,
 					globalTetrahedralConnectivities,
 					globalTetrahedralLinks,
 
