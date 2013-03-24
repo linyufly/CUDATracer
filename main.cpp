@@ -1,7 +1,7 @@
 /**********************************************
 File		:	main.cpp
 Author		:	Mingcheng Chen
-Last Update	:	March 22nd, 2013
+Last Update	:	March 23rd, 2013
 ***********************************************/
 
 #include "lcs.h"
@@ -15,12 +15,15 @@ Last Update	:	March 22nd, 2013
 #include <algorithm>
 #include <cuda_runtime.h>
 
-#define MAX_THREADS_PER_SM 512 //672
+#define MAX_THREADS_PER_SM 512
 #define MAX_THREADS_PER_BLOCK 256
 #define MAX_SHARED_MEMORY_PER_SM 49000//49152
 #define WARP_SIZE 32
 
 #define MAX_MULTIPLE 16
+
+#define GET_PATH
+//#define BLOCK_STAT
 
 extern "C" void TetrahedronBlockIntersection(double *vertexPositions, int *tetrahedralConnectivities, int *queryTetrahedron, int *queryBlock, bool *queryResult,
 					int numOfBlocksInY, int numOfBlocksInZ, double globalMinX, double globalMinY, double globalMinZ, double blockSize,
@@ -97,6 +100,7 @@ lcs::Configure *configure;
 
 lcs::Frame **frames;
 int numOfFrames;
+int numOfTimePoints;
 
 int *tetrahedralConnectivities, *tetrahedralLinks;
 double *vertexPositions;
@@ -249,7 +253,7 @@ void LoadFrames() {
 		double timePoint = configure->GetTimePoints()[i];
 		std::string veloFileName = configure->GetDataFilePrefix() + configure->GetDataFileIndices()[i] + "." + configure->GetDataFileSuffix();
 		printf("Loading frame %d (file = %s) ... ", i, veloFileName.c_str());
-		frames[i] = new lcs::Frame(timePoint, "patient2/geometry.txt", veloFileName.c_str());
+		frames[i] = new lcs::Frame(timePoint, "./patient2/geometry.txt", veloFileName.c_str());
 		if (i) frames[i]->GetTetrahedralGrid()->CleanAllButVelocities();
 		printf("Done.\n");
 	}
@@ -1356,7 +1360,7 @@ void CalculateBlockSizeAndSharedMemorySizeForTracingKernel(double averageParticl
 		tracingBlockSize = WARP_SIZE;
 
 	/// DEBUG ///
-	//tracingBlockSize = MAX_THREADS_PER_SM;
+	//tracingBlockSize = MAX_THREADS_PER_BLOCK;
 
 	multiple = (int)(averageParticlesInBlock / tracingBlockSize);
 	//multiple++;
@@ -1371,7 +1375,7 @@ void CalculateBlockSizeAndSharedMemorySizeForTracingKernel(double averageParticl
 	//printf("tracingBlockSize = %d, tracingSharedMemorySize = %d, multiple = %d\n", tracingBlockSize, tracingSharedMemorySize, multiple);
 }
 
-void GetLastPositions(const char *);
+void GetLastPositions(const char *, double);
 
 void Tracing() {
 	// Initialize d_tetrahedralLinks
@@ -1448,24 +1452,46 @@ void Tracing() {
 	// Main loop for blocked tracing
 	/// DEBUG ///
 	//int startTime = clock();
+
+	numOfTimePoints = configure->GetNumOfTimePoints();
 	double startTime = lcs::GetCurrentTimeInSeconds();
 
 	/// DEBUG ///
 	kernelSum = 0;
 	int numOfKernelCalls = 0;
 
-	for (int frameIdx = 0; frameIdx + 1 < numOfFrames; frameIdx++, currTime += interval) {
-		/// DEBUG ///
-		//char fileName[100];
-		//sprintf(fileName, "lcsPositions%02d.txt", frameIdx);
-		//GetLastPositions(fileName);
+#ifdef BLOCK_STAT
+	FILE *blockStatFile1 = fopen("lcsBlockStat1.txt", "w");
+	fprintf(blockStatFile1, "No. of call\tNo. of active particles\tNo. of active blocks\tAve. of particles\n");
+	FILE *blockStatFile2 = fopen("lcsBlockStat2.txt", "w");
+	fprintf(blockStatFile2, "No. of call %6s", "lower");
+	int lowerBound = 512, upperBound = 1024;
+	for (int i = lowerBound; i <= upperBound; i++)
+		if (i % WARP_SIZE == 0) fprintf(blockStatFile2, " %6d", i);
+	fprintf(blockStatFile2, " %6s\n", "upper");
+	int *startOffsetInActiveParticles = new int [numOfInitialActiveParticles];
+	int *histogram = new int [upperBound + 1];
+#endif
+	for (int frameIdx = 0; frameIdx + 1 < numOfTimePoints; frameIdx++, currTime += interval) {
+#ifdef BLOCK_STAT
+		if (frameIdx) {
+			fprintf(blockStatFile1, "\n");
+			fprintf(blockStatFile2, "\n");
+		}
+#endif
 
-		printf("*********Tracing between frame %d and frame %d*********\n", frameIdx, frameIdx + 1);
+#ifdef GET_PATH
+		char fileName[100];
+		sprintf(fileName, "lcsPositions%02d.vtk", frameIdx);
+		GetLastPositions(fileName, currTime);
+#endif
+
+		printf("*********Tracing between time point %d and time point %d*********\n", frameIdx, frameIdx + 1);
 		printf("\n");
 
 		/// DEBUG ///
 		int startTime;
-		startTime = clock();
+		//startTime = clock();
 
 		currStartVIndex = 1 - currStartVIndex;
 
@@ -1478,7 +1504,7 @@ void Tracing() {
 		printf("numOfActiveParticles = %d\n", lastNumOfActiveParticles);
 
 		// Load end velocities
-		LoadVelocities(velocities[1 - currStartVIndex], d_velocities[1 - currStartVIndex], frameIdx + 1);
+		LoadVelocities(velocities[1 - currStartVIndex], d_velocities[1 - currStartVIndex], (frameIdx + 1) % numOfFrames);
 
 		// Initialize big blocks
 		BigBlockInitializationForVelocities(currStartVIndex);
@@ -1486,6 +1512,7 @@ void Tracing() {
 		/// DEBUG ///
 		//printf("BigBlockInitializationForVelocities done.\n");
 
+		startTime = clock();
 		kernelSumInInterval = 0;
 
 		while (true) {
@@ -1519,6 +1546,24 @@ void Tracing() {
 
 			GetStartOffsetInParticles(numOfActiveBlocks, numOfActiveParticles, maxNumOfStages);
 
+#ifdef BLOCK_STAT
+			fprintf(blockStatFile1, "%11d\t%23d\t%20d\t%17.2lf\n", numOfKernelCalls, numOfActiveParticles, numOfActiveBlocks, averageParticlesInBlock);
+			err = cudaMemcpy(startOffsetInActiveParticles, d_startOffsetInParticles, sizeof(int) * (numOfActiveBlocks + 1), cudaMemcpyDeviceToHost);
+			if (err) lcs::Error("Fail to read d_startOffsetInActiveParticles");
+			memset(histogram, 0, sizeof(int) * (upperBound + 1));
+			int lowerSum = 0, upperSum = 0;
+			for (int i = 0; i < numOfActiveBlocks; i++) {
+				int pop = startOffsetInActiveParticles[i + 1] - startOffsetInActiveParticles[i];
+				if (pop < lowerBound) lowerSum++;
+				else if (pop > upperBound) upperSum++;
+				else histogram[pop / WARP_SIZE * WARP_SIZE]++;
+			}
+			fprintf(blockStatFile2, "%11d %6d", numOfKernelCalls, lowerSum);
+			for (int i = lowerBound; i <= upperBound; i++)
+				if (i % WARP_SIZE == 0) fprintf(blockStatFile2, " %6d", histogram[i]);
+			fprintf(blockStatFile2, " %6d\n", upperSum);
+#endif
+
 			int tracingBlockSize, tracingSharedMemorySize, multiple;
 			CalculateBlockSizeAndSharedMemorySizeForTracingKernel(averageParticlesInBlock, tracingBlockSize, tracingSharedMemorySize, multiple);
 
@@ -1535,6 +1580,13 @@ void Tracing() {
 		printf("\n");
 	}
 
+#ifdef BLOCK_STAT
+	fclose(blockStatFile1);
+	fclose(blockStatFile2);
+	delete [] startOffsetInActiveParticles;
+	delete [] histogram;
+#endif
+
 	// Release device resources
 	cudaFree(d_exclusiveScanArrayForInt);
 
@@ -1549,7 +1601,7 @@ void Tracing() {
 	printf("\n");
 }
 
-void GetLastPositions(const char *fileName) {
+void GetLastPositions(const char *fileName, double t = 0.0) {
 	finalPositions = new double [numOfInitialActiveParticles * 3];
 	
 	switch (lcs::ParticleRecord::GetDataType()) {
@@ -1559,13 +1611,24 @@ void GetLastPositions(const char *fileName) {
 	}
 
 	FILE *fout = fopen(fileName, "w");
+
+#ifdef GET_PATH
+	fprintf(fout, "# vtk DataFile Version 3.0\nt = %lf\nASCII\nDATASET POLYDATA\n", t);
+	fprintf(fout, "POINTS %d float\n", numOfInitialActiveParticles);
+#endif
+
 	for (int i = 0; i < numOfInitialActiveParticles; i++) {
 		int gridPointID = particleRecords[i]->GetGridPointID();
 		int z = gridPointID % (configure->GetBoundingBoxZRes() + 1);
 		int temp = gridPointID / (configure->GetBoundingBoxZRes() + 1);
 		int y = temp % (configure->GetBoundingBoxYRes() + 1);
 		int x = temp / (configure->GetBoundingBoxYRes() + 1);
+#ifdef GET_PATH
+		//fprintf(fout, "v");
+#else
 		fprintf(fout, "%d %d %d:", x, y, z);
+#endif
+
 		for (int j = 0; j < 3; j++)
 			fprintf(fout, " %lf", finalPositions[i * 3 + j]);
 		fprintf(fout, "\n");

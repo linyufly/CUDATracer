@@ -1,7 +1,7 @@
 /**********************************************
 File		:	lcsUtility.h
 Author		:	Mingcheng Chen
-Last Update	:	January 29th, 2013
+Last Update	:	March 24th, 2013
 ***********************************************/
 
 #ifndef __LCS_UTILITY_H
@@ -27,6 +27,7 @@ double GetCurrentTimeInSeconds();
 class Configure {
 public:
 	Configure(const char *fileName);
+	int GetNumOfTimePoints() const;
 	int GetNumOfFrames() const;
 	int GetSharedMemoryKilobytes() const;
 	int GetBoundingBoxXRes() const;
@@ -59,6 +60,7 @@ private:
 	void DefaultSetting();
 
 	std::string fileName;
+	int numOfTimePoints;
 	int numOfFrames;
 	int sharedMemoryKilobytes;
 	int boundingBoxXRes;

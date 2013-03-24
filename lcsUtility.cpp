@@ -1,7 +1,7 @@
 /**********************************************
 File		:	lcsUtility.cpp
 Author		:	Mingcheng Chen
-Last Update	:	January 30th, 2013
+Last Update	:	March 24th, 2013
 ***********************************************/
 
 #include "lcsUtility.h"
@@ -63,7 +63,14 @@ lcs::Configure::Configure(const char *fileName) {
 
 			// Find the equation mark
 			lcs::ConsumeChar('=', fin);
-
+			if (!strcmp(name, "numOfTimePoints")) {
+				printf("read numOfTimePoints ... ");
+				int value;
+				if (fscanf(fin, "%d", &value) != 1) lcs::Error("Fail to read \"numOfTimePoints\"");
+				this->numOfTimePoints = value;
+				printf("Done. numOfTimePoints = %d\n", numOfTimePoints);
+				continue;
+			}
 			if (!strcmp(name, "numOfFrames")) {
 				printf("read numOfFrames ... ");
 				int numOfFrames;
@@ -339,6 +346,10 @@ void lcs::Configure::DefaultSetting() {
 	this->blockSize = 1.0;
 	this->epsilon = 1e-8;
 	// TODO: May add more default settings
+}
+
+int lcs::Configure::GetNumOfTimePoints() const {
+	return this->numOfTimePoints;
 }
 
 int lcs::Configure::GetNumOfFrames() const {
