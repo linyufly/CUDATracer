@@ -7,6 +7,7 @@ Last Update		:		May 20th, 2012
 #include "lcsGeometry.h"
 #include <cmath>
 #include <cstring>
+#include <cstdio>
 #include <algorithm>
 //#include <vtkIdList.h>
 //#include <vtkPointData.h>

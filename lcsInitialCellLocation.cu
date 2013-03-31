@@ -155,6 +155,7 @@ __global__ void InitialCellLocationKernel(double *vertexPositions,
 			double Z = minZ + dz * zIdx;
 			if (Inside(X, Y, Z, tetX, tetY, tetZ, epsilon)) {
 				int index = (xIdx * (yRes + 1) + yIdx) * (zRes + 1) + zIdx;
+
 				int oldValue = atomicAdd(cellLocations + index, globalID + 1);
 				if (oldValue != -1) atomicAdd(cellLocations + index, -globalID - 1);
 			}

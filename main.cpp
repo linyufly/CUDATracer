@@ -1,7 +1,7 @@
 /**********************************************
 File		:	main.cpp
 Author		:	Mingcheng Chen
-Last Update	:	March 23rd, 2013
+Last Update	:	March 25th, 2013
 ***********************************************/
 
 #include "lcs.h"
@@ -10,6 +10,7 @@ Last Update	:	March 23rd, 2013
 #include "lcsGeometry.h"
 
 #include <ctime>
+#include <cmath>
 #include <cstdio>
 #include <string>
 #include <algorithm>
@@ -22,8 +23,17 @@ Last Update	:	March 23rd, 2013
 
 #define MAX_MULTIPLE 16
 
-#define GET_PATH
+//#define GET_PATH
+//#define GET_VEL
 //#define BLOCK_STAT
+
+/*
+#ifdef GET_PATH
+	const int intervalDivision = 10;
+#else
+	const int intervalDivision = 1;
+#endif
+*/
 
 extern "C" void TetrahedronBlockIntersection(double *vertexPositions, int *tetrahedralConnectivities, int *queryTetrahedron, int *queryBlock, bool *queryResult,
 					int numOfBlocksInY, int numOfBlocksInZ, double globalMinX, double globalMinY, double globalMinZ, double blockSize,
@@ -93,6 +103,8 @@ extern "C" void BigBlockInitializationForVelocities(double *globalStartVelocitie
 						double *startVelocitiesForBig, double *endVelocitiesForBig, int numOfInterestingBlocks);
 
 const char *configurationFile = "RungeKutta4.conf";
+//const char *configurationFile = "RungeKutta4ForTCPC.conf";
+//const char *configurationFile = "RungeKutta4ForUpperVasc.conf";
 const char *lastPositionFile = "lcsLastPositions.txt";
 const char *FTLEFile = "lcsFTLEValues.vtk";
 
@@ -253,16 +265,22 @@ void LoadFrames() {
 		double timePoint = configure->GetTimePoints()[i];
 		std::string veloFileName = configure->GetDataFilePrefix() + configure->GetDataFileIndices()[i] + "." + configure->GetDataFileSuffix();
 		printf("Loading frame %d (file = %s) ... ", i, veloFileName.c_str());
-		frames[i] = new lcs::Frame(timePoint, "./patient2/geometry.txt", veloFileName.c_str());
+		frames[i] = new lcs::Frame(timePoint, "patient2/geometry.txt", veloFileName.c_str());
 		if (i) frames[i]->GetTetrahedralGrid()->CleanAllButVelocities();
 		printf("Done.\n");
 	}
+	printf("\n");
+
+	frames[0]->GetTetrahedralGrid()->TetrahedronSize();
+
 	printf("\n");
 }
 
 void GetTopologyAndGeometry() {
 	globalNumOfCells = frames[0]->GetTetrahedralGrid()->GetNumOfCells();
 	globalNumOfPoints = frames[0]->GetTetrahedralGrid()->GetNumOfVertices();
+
+	printf("globalNumOfCells = %d, globalNumOfPoints = %d\n", globalNumOfCells, globalNumOfPoints);
 
 	tetrahedralConnectivities = new int [globalNumOfCells * 4];
 	tetrahedralLinks = new int [globalNumOfCells * 4];
@@ -1212,10 +1230,32 @@ void InitializeVelocityData(double **velocities) {
 void LoadVelocities(double *velocities, double *d_velocities, int frameIdx) {
 	// Read velocities
 	frames[frameIdx]->GetTetrahedralGrid()->ReadVelocities(velocities);
-	
+
+	/// DEBUG ///
+/*
+	FILE *fout = fopen("velocityTest.txt", "w");
+	for (int i = 0; i < globalNumOfPoints; i++)
+		fprintf(fout, "%.9lf %.9lf %.9lf\n", velocities[i * 3], velocities[i * 3 + 1], velocities[i * 3 + 2]);
+	fclose(fout);
+	exit(0);
+*/	
 	// Write for d_velocities[frameIdx]
 	err = cudaMemcpy(d_velocities, velocities, sizeof(double) * 3 * globalNumOfPoints, cudaMemcpyHostToDevice);
 	if (err) lcs::Error("Fail to copy for d_velocities");
+
+#ifdef GET_VEL
+	double average = 0;
+	double largest = 0;
+	for (int i = 0; i < globalNumOfPoints; i++) {
+		double sum = 0;
+		for (int j = 0; j < 3; j++)
+			sum += velocities[i * 3 + j] * velocities[i * 3 + j];
+		if (sum > largest) largest = sum;
+		average += sqrt(sum);
+	}
+	average /= globalNumOfPoints;
+	printf("Average velocity magnitude= %lf, Maximum velocity magnitude = %lf\n", average, sqrt(largest));
+#endif
 }
 
 int CollectActiveParticlesForNewInterval(int *d_activeParticles) {

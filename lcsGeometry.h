@@ -10,6 +10,8 @@ Last Update		:		December 22nd, 2012
 //#include <vtkUnstructuredGrid.h>
 #include <cstdlib>
 #include <cstring>
+#include <cmath>
+#include <cstdio>
 
 namespace lcs {
 
@@ -116,6 +118,35 @@ public:
 
 	void CalculateNaturalCoordinates(const Vector &, double *) const;
 
+/*
+	double Size() const {
+		double minX, maxX, minY, maxY, minZ, maxZ;
+		minX = minY = minZ = 1e100;
+		maxX = maxY = maxZ = -1e100;
+		for (int i = 0; i < 4; i++) {
+			double x = vertices[i].GetX();
+			double y = vertices[i].GetY();
+			double z = vertices[i].GetZ();
+			if (x < minX) minX = x;
+			if (x > maxX) maxX = x;
+			if (y < minY) minY = y;
+			if (y > maxY) maxY = y;
+			if (z < minZ) minZ = z;
+			if (z > maxZ) maxZ = z;
+		}
+		double res = std::max(maxX - minX, maxY - minY);
+		res = std::max(res, maxZ - minZ);
+		return res;
+	}
+*/
+
+	double Volume() const {
+		Vector A = this->vertices[1] - this->vertices[0];
+		Vector B = this->vertices[2] - this->vertices[0];
+		Vector C = this->vertices[3] - this->vertices[0];
+		return fabs(Mixed(A, B, C)) / 6.0;
+	}
+
 private:
 	Vector vertices[4];
 };
@@ -148,6 +179,17 @@ public:
 	}
 
 	Tetrahedron GetTetrahedron(int) const;
+
+	void TetrahedronSize() const {
+		double minTet = 1e100, maxTet = 0, sumTet = 0;
+		for (int i = 0; i < numOfCells; i++) {
+			double vol = this->GetTetrahedron(i).Volume();
+			if (vol < minTet) minTet = vol;
+			if (vol > maxTet) maxTet = vol;
+			sumTet += vol;
+		}
+		printf("minTet: %0.20lf, maxTet: %.20lf, aveTet: %.20lf\n", minTet, maxTet, sumTet / numOfCells);
+	}
 
 	Vector GetVertex(int index) const {
 		return vertices[index];
