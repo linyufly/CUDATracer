@@ -6,14 +6,17 @@ Last Update		:		December 22nd, 2012
 
 #include "lcs.h"
 #include "lcsUtility.h"
-//#include <vtkXMLUnstructuredGridReader.h>
+#include <vtkUnstructuredGridReader.h>
 #include <cstring>
 
 ////////////////////////////////////////////////
-lcs::Frame::Frame(double timePoint, const char *geometryFile, const char *velocityFile) {
-	//vtkXMLUnstructuredGridReader *reader = vtkXMLUnstructuredGridReader::New();
-	//reader->SetFileName(dataFile);
-	//reader->Update();
+lcs::Frame::Frame(double timePoint, const char *dataFile) {
+	vtkUnstructuredGridReader *reader = vtkUnstructuredGridReader::New();
+	reader->SetFileName(dataFile);
+	reader->Update();
+	this->tetrahedralGrid = new TetrahedralGrid(reader->GetOutput());
+	this->timePoint = timePoint;
+	reader->Delete();
 
 	//	FILE *fin = fopen("data/geometry.txt", "rb");
 	//int numOfCells, numOfPoints;
@@ -32,7 +35,9 @@ lcs::Frame::Frame(double timePoint, const char *geometryFile, const char *veloci
 	//	printf(" %d", conn[i + 640]);
 	//printf("\n");
 	//fclose(fin);
+}
 
+lcs::Frame::Frame(double timePoint, const char *geometryFile, const char *velocityFile) {
 	FILE *fin = fopen(geometryFile, "rb");
 	if (!fin) lcs::Error("Fail to open file");
 	int numOfPoints, numOfCells;

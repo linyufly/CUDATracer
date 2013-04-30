@@ -7,7 +7,7 @@ Last Update		:		December 22nd, 2012
 #ifndef __LCS_Geometry_H
 #define __LCS_Geometry_H
 
-//#include <vtkUnstructuredGrid.h>
+#include <vtkUnstructuredGrid.h>
 #include <cstdlib>
 #include <cstring>
 #include <cmath>
@@ -162,7 +162,7 @@ public:
 		tetrahedralLinks = NULL;
 	}
 
-	//TetrahedralGrid(vtkUnstructuredGrid *);
+	TetrahedralGrid(vtkUnstructuredGrid *);
 	TetrahedralGrid(int numOfCells, int numOfPoints, int *conn, int *link, double *posi, double *velo);
 
 	~TetrahedralGrid() {

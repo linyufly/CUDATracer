@@ -27,14 +27,6 @@ Last Update	:	March 25th, 2013
 //#define GET_VEL
 //#define BLOCK_STAT
 
-/*
-#ifdef GET_PATH
-	const int intervalDivision = 10;
-#else
-	const int intervalDivision = 1;
-#endif
-*/
-
 extern "C" void TetrahedronBlockIntersection(double *vertexPositions, int *tetrahedralConnectivities, int *queryTetrahedron, int *queryBlock, bool *queryResult,
 					int numOfBlocksInY, int numOfBlocksInZ, double globalMinX, double globalMinY, double globalMinZ, double blockSize,
 					double epsilon, int numOfQueries, double marginRatio);
@@ -51,13 +43,7 @@ extern "C" void InitializeConstantsForBlockedTracingKernelOfRK4(double *globalVe
 								double *pastTimes, double *placesOfInterest, int *startOffsetInParticle, int *blockedActiveParticleIDList,
 								int *cellLocations, int *exitCells, double hostTimeStep, double hostEpsilon);
 
-extern "C" void BlockedTracingOfRK4(/*double *globalVertexPositions, int *globalTetrahedralConnectivities,
-				int *globalTetrahedralLinks, int *startOffsetInCell, int *startOffsetInPoint, double *vertexPositionsForBig, double *startVelocitiesForBig,
-				double *endVelocitiesForBig, int *blockedLocalConnectivities, int *blockedLocalLinks, int *blockedGlobalCellIDs,
-				int *activeBlockList, // Map active block ID to interesting block ID
-				int *blockOfGroups, int *offsetInBlocks, int *stage, double *lastPosition, double *k1, double *k2, double *k3, double *pastTimes,
-				double *placesOfInterest, int *startOffsetInParticle, int *blockedActiveParticleIDList, int *cellLocations, int *exitCells,*/
-				double startTime, double endTime, double timeStep, double epsilon, int numOfActiveBlocks, int blockSize, int sharedMemorySize, int multiple);
+extern "C" void BlockedTracingOfRK4(double startTime, double endTime, double timeStep, double epsilon, int numOfActiveBlocks, int blockSize, int sharedMemorySize, int multiple);
 
 extern "C" void GetNumOfGroupsForBlocks(int *startOffsetInParticles, int *numOfGroupsForBlocks, int numOfActiveBlocks, int groupSize);
 
@@ -263,9 +249,10 @@ void LoadFrames() {
 
 	for (int i = 0; i < numOfFrames; i++) {
 		double timePoint = configure->GetTimePoints()[i];
-		std::string veloFileName = configure->GetDataFilePrefix() + configure->GetDataFileIndices()[i] + "." + configure->GetDataFileSuffix();
+		std::string veloFileName = configure->GetDataFilePrefix() + "." + configure->GetDataFileIndices()[i] + "." + configure->GetDataFileSuffix();
 		printf("Loading frame %d (file = %s) ... ", i, veloFileName.c_str());
-		frames[i] = new lcs::Frame(timePoint, "patient2/geometry.txt", veloFileName.c_str());
+		frames[i] = new lcs::Frame(timePoint, veloFileName.c_str());
+		//frames[i] = new lcs::Frame(timePoint, "patient2/geometry.txt", veloFileName.c_str());
 		if (i) frames[i]->GetTetrahedralGrid()->CleanAllButVelocities();
 		printf("Done.\n");
 	}

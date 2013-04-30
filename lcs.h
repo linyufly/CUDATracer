@@ -13,7 +13,7 @@ namespace lcs {
 
 class Frame {
 public:
-	//Frame(double timePoint, const char *dataFile);
+	Frame(double timePoint, const char *dataFile);
 	Frame(double timePoint, const char *geometryFile, const char *velocityFile);
 
 	~Frame();

@@ -9,8 +9,8 @@ Last Update		:		May 20th, 2012
 #include <cstring>
 #include <cstdio>
 #include <algorithm>
-//#include <vtkIdList.h>
-//#include <vtkPointData.h>
+#include <vtkIdList.h>
+#include <vtkPointData.h>
 
 namespace lcs {
 
@@ -109,110 +109,110 @@ void Tetrahedron::CalculateNaturalCoordinates(const Vector &point, double *coord
 }
 
 ////////////////////////////////////////////////
-//TetrahedralGrid::TetrahedralGrid(vtkUnstructuredGrid *unstructuredGrid) {
-//	if (!unstructuredGrid) return;
-//	
-//	this->numOfVertices = unstructuredGrid->GetNumberOfPoints();
-//	this->numOfCells = unstructuredGrid->GetNumberOfCells();
-//	
-//	this->vertices = new Vector [this->numOfVertices];
-//	this->velocities = new Vector [this->numOfVertices];
-//	this->tetrahedralConnectivities = new int [this->numOfCells * 4];
-//	this->tetrahedralLinks = new int [this->numOfCells * 4];
-//
-//	double point[3], velocity[3];
-//	for (int i = 0; i < this->numOfVertices; i++) {
-//		unstructuredGrid->GetPoint(i, point);
-//		this->vertices[i] = Vector(point);
-//		unstructuredGrid->GetPointData()->GetVectors()->GetTuple(i, velocity);
-//		this->velocities[i] = Vector(velocity);
-//	}
-//
-//	int **vertexLinks = new int *[this->numOfVertices];
-//	int *vertexDegrees = new int [this->numOfVertices];
-//	memset(vertexDegrees, 0, sizeof(int) * this->numOfVertices);
-//	
-//	vtkIdList *idList = vtkIdList::New();
-//	for (int i = 0; i < this->numOfCells; i++) {
-//		unstructuredGrid->GetCellPoints(i, idList);
-//		for (int j = 0; j < 4; j++) {
-//			this->tetrahedralConnectivities[(i << 2) + j] = idList->GetId(j);
-//			vertexDegrees[idList->GetId(j)]++;
-//		}
-//		Vector a = this->vertices[this->tetrahedralConnectivities[(i << 2) + 0]];
-//		Vector b = this->vertices[this->tetrahedralConnectivities[(i << 2) + 1]];
-//		Vector c = this->vertices[this->tetrahedralConnectivities[(i << 2) + 2]];
-//		Vector d = this->vertices[this->tetrahedralConnectivities[(i << 2) + 3]];
-//		if (Mixed(b - a, c - a, d - a) < 0) std::swap(this->tetrahedralConnectivities[(i << 2) + 1], this->tetrahedralConnectivities[(i << 2) + 2]);
-//	}
-//	idList->Delete();
-//
-//	for (int i = 0; i < this->numOfVertices; i++) {
-//		vertexLinks[i] = new int [vertexDegrees[i]];
-//		vertexDegrees[i] = 0;
-//	}
-//	for (int i = 0; i < this->numOfCells; i++)
-//		for (int j = 0; j < 4; j++) {
-//			int idx = this->tetrahedralConnectivities[(i << 2) + j];
-//			vertexLinks[idx][vertexDegrees[idx]++] = i;
-//		}
-//
-//	memset(this->tetrahedralLinks, 255, sizeof(int) * this->numOfCells * 4);
-//	for (int i = 0; i < this->numOfCells; i++)
-//		for (int j = 0; j < 4; j++)
-//			if (this->tetrahedralLinks[(i << 2) + j] < 0) {
-//				int idx = this->tetrahedralConnectivities[(i << 2) + ((j + 1) & 3)];
-//				for (int k = 2; k <= 3; k++) {
-//					int tmp = this->tetrahedralConnectivities[(i << 2) + ((j + k) & 3)];
-//					if (vertexDegrees[tmp] < vertexDegrees[idx]) idx = tmp;
-//				}
-//				int v1 = -1, v2 = -1;
-//				for (int k = 1; k <= 3; k++) {
-//					int tmp = this->tetrahedralConnectivities[(i << 2) + ((j + k) & 3)];
-//					if (tmp != idx)
-//						if (v1 == -1) v1 = tmp;
-//						else {
-//							v2 = tmp;
-//							break;
-//						}
-//				}
-//				for (int k = 0; k < vertexDegrees[idx]; k++) {
-//					int tet = vertexLinks[idx][k];
-//					if (tet == i) continue;
-//					int cnt = 0, v3 = -1;
-//					for (int l = 0; l < 4; l++) {
-//						int v = this->tetrahedralConnectivities[(tet << 2) + l];
-//						if (v == v1) {
-//							cnt++;
-//							continue;
-//						}
-//						if (v == v2) {
-//							cnt++;
-//							continue;
-//						}
-//						if (v != idx) v3 = l;
-//					}
-//					if (cnt == 2) {
-//						this->tetrahedralLinks[(i << 2) + j] = tet;
-//						if (this->tetrahedralLinks[(tet << 2) + v3] != -1) {
-//							printf("bug!\n");
-//							printf("i = %d, j = %d\n", i, j);
-//							printf("v3 = %d\n", v3);
-//							printf("tet : %d, %d\n", tet, this->tetrahedralLinks[(tet << 2) + v3]);
-//							printf("idx = %d, v1 = %d, v2 = %d\n", idx, v1, v2);
-//							while (1);
-//						}
-//						this->tetrahedralLinks[(tet << 2) + v3] = i;
-//						break;
-//					}
-//				}
-//			}
-//
-//	delete [] vertexDegrees;
-//	for (int i = 0; i < this->numOfVertices; i++)
-//		delete [] vertexLinks[i];
-//	delete [] vertexLinks;
-//}
+TetrahedralGrid::TetrahedralGrid(vtkUnstructuredGrid *unstructuredGrid) {
+	if (!unstructuredGrid) return;
+	
+	this->numOfVertices = unstructuredGrid->GetNumberOfPoints();
+	this->numOfCells = unstructuredGrid->GetNumberOfCells();
+	
+	this->vertices = new Vector [this->numOfVertices];
+	this->velocities = new Vector [this->numOfVertices];
+	this->tetrahedralConnectivities = new int [this->numOfCells * 4];
+	this->tetrahedralLinks = new int [this->numOfCells * 4];
+
+	double point[3], velocity[3];
+	for (int i = 0; i < this->numOfVertices; i++) {
+		unstructuredGrid->GetPoint(i, point);
+		this->vertices[i] = Vector(point);
+		unstructuredGrid->GetPointData()->GetVectors()->GetTuple(i, velocity);
+		this->velocities[i] = Vector(velocity);
+	}
+
+	int **vertexLinks = new int *[this->numOfVertices];
+	int *vertexDegrees = new int [this->numOfVertices];
+	memset(vertexDegrees, 0, sizeof(int) * this->numOfVertices);
+	
+	vtkIdList *idList = vtkIdList::New();
+	for (int i = 0; i < this->numOfCells; i++) {
+		unstructuredGrid->GetCellPoints(i, idList);
+		for (int j = 0; j < 4; j++) {
+			this->tetrahedralConnectivities[(i << 2) + j] = idList->GetId(j);
+			vertexDegrees[idList->GetId(j)]++;
+		}
+		Vector a = this->vertices[this->tetrahedralConnectivities[(i << 2) + 0]];
+		Vector b = this->vertices[this->tetrahedralConnectivities[(i << 2) + 1]];
+		Vector c = this->vertices[this->tetrahedralConnectivities[(i << 2) + 2]];
+		Vector d = this->vertices[this->tetrahedralConnectivities[(i << 2) + 3]];
+		if (Mixed(b - a, c - a, d - a) < 0) std::swap(this->tetrahedralConnectivities[(i << 2) + 1], this->tetrahedralConnectivities[(i << 2) + 2]);
+	}
+	idList->Delete();
+
+	for (int i = 0; i < this->numOfVertices; i++) {
+		vertexLinks[i] = new int [vertexDegrees[i]];
+		vertexDegrees[i] = 0;
+	}
+	for (int i = 0; i < this->numOfCells; i++)
+		for (int j = 0; j < 4; j++) {
+			int idx = this->tetrahedralConnectivities[(i << 2) + j];
+			vertexLinks[idx][vertexDegrees[idx]++] = i;
+		}
+
+	memset(this->tetrahedralLinks, 255, sizeof(int) * this->numOfCells * 4);
+	for (int i = 0; i < this->numOfCells; i++)
+		for (int j = 0; j < 4; j++)
+			if (this->tetrahedralLinks[(i << 2) + j] < 0) {
+				int idx = this->tetrahedralConnectivities[(i << 2) + ((j + 1) & 3)];
+				for (int k = 2; k <= 3; k++) {
+					int tmp = this->tetrahedralConnectivities[(i << 2) + ((j + k) & 3)];
+					if (vertexDegrees[tmp] < vertexDegrees[idx]) idx = tmp;
+				}
+				int v1 = -1, v2 = -1;
+				for (int k = 1; k <= 3; k++) {
+					int tmp = this->tetrahedralConnectivities[(i << 2) + ((j + k) & 3)];
+					if (tmp != idx)
+						if (v1 == -1) v1 = tmp;
+						else {
+							v2 = tmp;
+							break;
+						}
+				}
+				for (int k = 0; k < vertexDegrees[idx]; k++) {
+					int tet = vertexLinks[idx][k];
+					if (tet == i) continue;
+					int cnt = 0, v3 = -1;
+					for (int l = 0; l < 4; l++) {
+						int v = this->tetrahedralConnectivities[(tet << 2) + l];
+						if (v == v1) {
+							cnt++;
+							continue;
+						}
+						if (v == v2) {
+							cnt++;
+							continue;
+						}
+						if (v != idx) v3 = l;
+					}
+					if (cnt == 2) {
+						this->tetrahedralLinks[(i << 2) + j] = tet;
+						if (this->tetrahedralLinks[(tet << 2) + v3] != -1) {
+							printf("bug!\n");
+							printf("i = %d, j = %d\n", i, j);
+							printf("v3 = %d\n", v3);
+							printf("tet : %d, %d\n", tet, this->tetrahedralLinks[(tet << 2) + v3]);
+							printf("idx = %d, v1 = %d, v2 = %d\n", idx, v1, v2);
+							while (1);
+						}
+						this->tetrahedralLinks[(tet << 2) + v3] = i;
+						break;
+					}
+				}
+			}
+
+	delete [] vertexDegrees;
+	for (int i = 0; i < this->numOfVertices; i++)
+		delete [] vertexLinks[i];
+	delete [] vertexLinks;
+}
 
 TetrahedralGrid::TetrahedralGrid(int numOfCells, int numOfPoints, int *conn, int *link, double *posi, double *velo) {
 	this->numOfCells = numOfCells;
