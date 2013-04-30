@@ -25,7 +25,7 @@ __constant__ int sharedMemorySize, multiple;
 //__constant__ double doubleValues[4];
 
 __device__ int FindCell(double *particle, int *connectivities, int *links, double *vertexPositions,
-			double epsilon, int guess, double *coordinates, double *tetX, double *tetY, double *tetZ) {
+			double _epsilon, int guess, double *coordinates, double *tetX, double *tetY, double *tetZ) {
 	//double tetX[4], tetY[4], tetZ[4];
 	int index, pointID;
 	double X, Y, Z, V;
