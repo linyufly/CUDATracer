@@ -1,7 +1,7 @@
 /**********************************************
 File		:	main.cpp
 Author		:	Mingcheng Chen
-Last Update	:	March 25th, 2013
+Last Update	:	June 9th, 2013
 ***********************************************/
 
 #include "lcs.h"
@@ -20,8 +20,9 @@ Last Update	:	March 25th, 2013
 #define MAX_THREADS_PER_BLOCK 256
 #define MAX_SHARED_MEMORY_PER_SM 49000//49152
 #define WARP_SIZE 32
-
 #define MAX_MULTIPLE 16
+
+//#define TET_WALK_STAT
 
 //#define GET_PATH
 //#define GET_VEL
@@ -41,7 +42,11 @@ extern "C" void InitializeConstantsForBlockedTracingKernelOfRK4(double *globalVe
 								int *blockOfGroups, int *offsetInBlocks, int *stage, double *lastPosition,
 								double *k, double *nx,
 								double *pastTimes, double *placesOfInterest, int *startOffsetInParticle, int *blockedActiveParticleIDList,
-								int *cellLocations, int *exitCells, double hostTimeStep, double hostEpsilon);
+								int *cellLocations, int *exitCells, double hostTimeStep, double hostEpsilon
+#ifdef TET_WALK_STAT
+								, int *numOfTetWalks
+#endif
+);
 
 extern "C" void BlockedTracingOfRK4(double startTime, double endTime, double timeStep, double epsilon, int numOfActiveBlocks, int blockSize, int sharedMemorySize, int multiple);
 
@@ -137,6 +142,11 @@ int maxSharedMemoryRequired;
 
 // error
 cudaError_t err;
+
+#ifdef TET_WALK_STAT
+// Device memory for tetrahedron walk statistics
+int *d_numOfTetWalks;
+#endif
 
 // Device memory for exclusive scan for int
 int *d_exclusiveScanArrayForInt;
@@ -1469,12 +1479,26 @@ void Tracing() {
 	double currTime = 0;
 	double interval = configure->GetTimeInterval();
 	
+#ifdef TET_WALK_STAT
+	err = cudaMalloc(&d_numOfTetWalks, sizeof(int) * numOfInitialActiveParticles);
+	if (err) lcs::Error("Fail to create a device buffer for tetrahedral walk sums");
+
+	err = cudaMemset(d_numOfTetWalks, 0, sizeof(int) * numOfInitialActiveParticles);
+	if (err) lcs::Error("Fail to initialize d_numOfTetWalks");
+#endif
+
 	InitializeConstantsForBlockedTracingKernelOfRK4(d_vertexPositions, d_tetrahedralConnectivities,
 				d_tetrahedralLinks, d_startOffsetInCell, d_startOffsetInPoint, d_vertexPositionsForBig, d_startVelocitiesForBig, d_endVelocitiesForBig, 
 				d_localConnectivities, d_localLinks, d_globalCellIDs, d_activeBlocks, // Map active block ID to interesting block ID
 				d_blockOfGroups, d_offsetInBlocks, d_stages, d_lastPositionForRK4,
 				d_kForRK4, d_nxForRK4, /*d_k2ForRK4, d_k3ForRK4,*/ d_pastTimes, d_placesOfInterest,
-				d_startOffsetInParticles, d_blockedActiveParticles, d_localTetIDs, d_exitCells, configure->GetTimeStep(), configure->GetEpsilon());
+				d_startOffsetInParticles, d_blockedActiveParticles, d_localTetIDs, d_exitCells, configure->GetTimeStep(), configure->GetEpsilon()
+
+#ifdef TET_WALK_STAT
+				, d_numOfTetWalks
+#endif
+
+);
 	
 	// Main loop for blocked tracing
 	/// DEBUG ///
@@ -1626,6 +1650,25 @@ void Tracing() {
 	//int endTime = clock();
 	printf("The total tracing time is %lf sec.\n", endTime - startTime);//(double)(endTime - startTime) / CLOCKS_PER_SEC);
 	printf("\n");
+
+#ifdef TET_WALK_STAT
+	int *numOfTetWalks = new int [numOfInitialActiveParticles];
+	err = cudaMemcpy(numOfTetWalks, d_numOfTetWalks, sizeof(int) * numOfInitialActiveParticles, cudaMemcpyDeviceToHost);
+	if (err) lcs::Error("Fail to read d_numOfTetWalks");
+	double totalTetWalks = 0;
+	int  minTetWalks = numOfTetWalks[0], maxTetWalks = numOfTetWalks[0];
+	for (int i = 0; i < numOfInitialActiveParticles; i++) {
+		totalTetWalks += numOfTetWalks[i];
+		if (numOfTetWalks[i] < minTetWalks) minTetWalks = numOfTetWalks[i];
+		if (numOfTetWalks[i] > maxTetWalks) maxTetWalks = numOfTetWalks[i];
+	}
+	printf("Average number of tetrahedron walk is %lf.\n", (double)totalTetWalks / numOfInitialActiveParticles);
+	printf("minTetWalks = %d, maxTetWalks = %d\n", minTetWalks, maxTetWalks);
+	printf("\n");
+
+	delete [] numOfTetWalks;
+#endif
+
 }
 
 void GetLastPositions(const char *fileName, double t = 0.0) {

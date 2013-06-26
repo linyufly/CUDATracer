@@ -1,12 +1,13 @@
 /*****************************************************
 File		:	lcsBlockedTracingOfRK4.cu
 Author		:	Mingcheng Chen
-Last Update	:	March 20th, 2013
+Last Update	:	June 12th, 2013
 ******************************************************/
 
 #include <stdio.h>
 
 //#define USE_CACHE
+//#define TET_WALK_STAT
 
 /*
 __device__ inline double DeterminantThree(double *a) {
@@ -19,17 +20,31 @@ __device__ inline double DeterminantThree(double *a) {
 }
 */
 
+#ifdef TET_WALK_STAT
+__constant__ int *numOfTetWalks;
+#endif
+
 __constant__ void *pointers[25];
 __constant__ double timeStep, epsilon;
 __constant__ int sharedMemorySize, multiple;
 //__constant__ double doubleValues[4];
 
 __device__ int FindCell(double *particle, int *connectivities, int *links, double *vertexPositions,
-			double epsilon, int guess, double *coordinates, double *tetX, double *tetY, double *tetZ) {
+			double epsilon, int guess, double *coordinates, double *tetX, double *tetY, double *tetZ
+
+#ifdef TET_WALK_STAT
+			, int particleID
+#endif
+
+) {
 	//double tetX[4], tetY[4], tetZ[4];
 	int index, pointID;
 	double X, Y, Z, V;
 	double z41, y34, z34, y41, /*a11, */x41, x34, /*a12, a13, */y12, z12, /*a21, */x12, /*a22, a23, */z23, y23, /*a31, */x23/*, a32, a33*/;
+
+#ifdef TET_WALK_STAT
+	int cnt = 0;
+#endif
 
 	while (true) {
 		for (index = 0; index < 4; index++) {
@@ -111,10 +126,19 @@ __device__ int FindCell(double *particle, int *connectivities, int *links, doubl
 
 		if (coordinates[index] >= -epsilon) break;
 
-		guess = links[(guess << 2) | index];
-		
+#ifdef TET_WALK_STAT
+		//numOfTetWalks[particleID]++;
+		cnt++;
+#endif
+
+		guess = links[(guess << 2) | index];		
+	
 		if (guess == -1) break;
 	}
+
+#ifdef TET_WALK_STAT
+	if (cnt > 1) numOfTetWalks[particleID]++;
+#endif
 
 	return guess;
 }
@@ -391,7 +415,13 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 				/*double coordinates[4];*/
 
 				//int nextCell;
-				nextCell = FindCell(placeOfInterest, connectivities, links, vertexPositions, /*doubleValues[3]*/epsilon, currCell, coordinates, vec, vec + 4, vec + 8);
+				nextCell = FindCell(placeOfInterest, connectivities, links, vertexPositions, /*doubleValues[3]*/epsilon, currCell, coordinates, vec, vec + 4, vec + 8
+
+#ifdef TET_WALK_STAT
+				, activeParticleID
+#endif
+
+);
 
 				if (nextCell == -1 || currTime >= /*doubleValues[1]*/endTime) {
 					// Find the next cell globally
@@ -404,7 +434,13 @@ __global__ void BlockedTracingKernelOfRK4(/*double *globalVertexPositions,
 						//nextGlobalCell = blockedGlobalCellIDs[startCell + nextCell];
 					else
 						nextCell/*nextGlobalCell*/ = FindCell(placeOfInterest, (int *)pointers[1], (int *)pointers[2], (double *)pointers[0],
-									/*doubleValues[3]*/epsilon, /*globalCellID*/((int *)pointers[10])[startCell + currCell], coordinates, vec, vec + 4, vec + 8);
+									/*doubleValues[3]*/epsilon, /*globalCellID*/((int *)pointers[10])[startCell + currCell], coordinates, vec, vec + 4, vec + 8
+
+#ifdef TET_WALK_STAT
+						, activeParticleID
+#endif
+
+);
 						//nextGlobalCell = FindCell(placeOfInterest, globalTetrahedralConnectivities,
 						//			globalTetrahedralLinks, globalVertexPositions,
 						//			epsilon, globalCellID, coordinates);
@@ -582,7 +618,12 @@ void InitializeConstantsForBlockedTracingKernelOfRK4(double *globalVertexPositio
 
 			int *exitCells,
 
-			double hostTimeStep, double hostEpsilon) {
+			double hostTimeStep, double hostEpsilon
+
+#ifdef TET_WALK_STAT
+			, int *deviceNumOfTetWalks
+#endif
+) {
 	int sizeOfPointer = sizeof(void *);
 
 	cudaError_t err = (cudaError_t)(cudaMemcpyToSymbol(pointers, &globalVertexPositions, sizeOfPointer, 0, cudaMemcpyHostToDevice) |
@@ -613,6 +654,11 @@ void InitializeConstantsForBlockedTracingKernelOfRK4(double *globalVertexPositio
 			  cudaMemcpyToSymbol(pointers, &exitCells, sizeOfPointer, sizeOfPointer * 24, cudaMemcpyHostToDevice) |
 			  cudaMemcpyToSymbol(timeStep, &hostTimeStep, sizeof(double), 0, cudaMemcpyHostToDevice) |
 			  cudaMemcpyToSymbol(epsilon, &hostEpsilon, sizeof(double), 0, cudaMemcpyHostToDevice));
+
+#ifdef TET_WALK_STAT
+	err = (cudaError_t)((int)err | cudaMemcpyToSymbol(numOfTetWalks, &deviceNumOfTetWalks, sizeOfPointer, 0, cudaMemcpyHostToDevice));
+#endif
+
 /*
 	err = (cudaError_t)((int)err | cudaMemcpyToSymbol(doubleValues, &startTime, sizeof(double), 0, cudaMemcpyHostToDevice) |
 		cudaMemcpyToSymbol(doubleValues, &endTime, sizeof(double), sizeof(double), cudaMemcpyHostToDevice) |
