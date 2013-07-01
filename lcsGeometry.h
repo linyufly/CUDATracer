@@ -1,7 +1,7 @@
 /**********************************************
 File			:		lcsGeometry.h
 Author			:		Mingcheng Chen
-Last Update		:		December 22nd, 2012
+Last Update		:		July 1st, 2013
 ***********************************************/
 
 #ifndef __LCS_Geometry_H
@@ -118,27 +118,15 @@ public:
 
 	void CalculateNaturalCoordinates(const Vector &, double *) const;
 
-/*
 	double Size() const {
-		double minX, maxX, minY, maxY, minZ, maxZ;
-		minX = minY = minZ = 1e100;
-		maxX = maxY = maxZ = -1e100;
-		for (int i = 0; i < 4; i++) {
-			double x = vertices[i].GetX();
-			double y = vertices[i].GetY();
-			double z = vertices[i].GetZ();
-			if (x < minX) minX = x;
-			if (x > maxX) maxX = x;
-			if (y < minY) minY = y;
-			if (y > maxY) maxY = y;
-			if (z < minZ) minZ = z;
-			if (z > maxZ) maxZ = z;
-		}
-		double res = std::max(maxX - minX, maxY - minY);
-		res = std::max(res, maxZ - minZ);
-		return res;
+		double result = 0;
+		for (int i = 0; i < 3; i++)
+			for (int j = i + 1; j < 4; j++) {
+				double dist = (this->GetVertex(i) - this->GetVertex(j)).Length();
+				if (dist > result) result = dist;
+			}
+		return result;
 	}
-*/
 
 	double Volume() const {
 		Vector A = this->vertices[1] - this->vertices[0];
@@ -188,7 +176,18 @@ public:
 			if (vol > maxTet) maxTet = vol;
 			sumTet += vol;
 		}
-		printf("minTet: %0.20lf, maxTet: %.20lf, aveTet: %.20lf\n", minTet, maxTet, sumTet / numOfCells);
+		printf("In volume, minTet: %0.20lf, maxTet: %.20lf, aveTet: %.20lf\n", minTet, maxTet, sumTet / numOfCells);
+
+		minTet = 1e100;
+		maxTet = 0;
+		sumTet = 0;
+		for (int i = 0; i < numOfCells; i++) {
+			double size = this->GetTetrahedron(i).Size();
+			if (size < minTet) minTet = size;
+			if (size > maxTet) maxTet = size;
+			sumTet += size;
+		}
+		printf("In edge length, minTet: %0.20lf, maxTet: %.20lf, aveTet: %.20lf\n", minTet, maxTet, sumTet / numOfCells);
 	}
 
 	Vector GetVertex(int index) const {
