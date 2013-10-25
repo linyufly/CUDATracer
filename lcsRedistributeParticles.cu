@@ -74,6 +74,13 @@ __global__ void CollectActiveBlocksKernel(int *activeParticles,
 
 		int localTetID = GetLocalTetID(blockID, tetID, startOffsetsInLocalIDMap, blocksOfTets, localIDsOfTets);
 
+		/// DEBUG ///
+		/*
+		if (particleID == 303)
+			printf("x, y, z: %d %d %d\n", x, y, z);
+		*/
+
+
 		if (localTetID == -1) {
 			int dx[3], dy[3], dz[3];
 			int lx = 1, ly = 1, lz = 1;
@@ -83,13 +90,13 @@ __global__ void CollectActiveBlocksKernel(int *activeParticles,
 			double yLower = globalMinY + y * blockSize;
 			double zLower = globalMinZ + z * blockSize;
 
-			if (!Sign(xLower - posX, 2 * epsilon)) dx[lx++] = -1;
-			if (!Sign(yLower - posY, 2 * epsilon)) dy[ly++] = -1;
-			if (!Sign(zLower - posZ, 2 * epsilon)) dz[lz++] = -1;
+			if (!Sign(xLower - posX, 10 * epsilon)) dx[lx++] = -1;
+			if (!Sign(yLower - posY, 10 * epsilon)) dy[ly++] = -1;
+			if (!Sign(zLower - posZ, 10 * epsilon)) dz[lz++] = -1;
 
-			if (!Sign(xLower + blockSize - posX, 2 * epsilon)) dx[lx++] = 1;
-			if (!Sign(yLower + blockSize - posY, 2 * epsilon)) dy[ly++] = 1;
-			if (!Sign(zLower + blockSize - posZ, 2 * epsilon)) dz[lz++] = 1;
+			if (!Sign(xLower + blockSize - posX, 10 * epsilon)) dx[lx++] = 1;
+			if (!Sign(yLower + blockSize - posY, 10 * epsilon)) dy[ly++] = 1;
+			if (!Sign(zLower + blockSize - posZ, 10 * epsilon)) dz[lz++] = 1;
 
 			// Check every necessary neightbor
 			for (int i = 0; localTetID == -1 && i < lx; i++)
@@ -105,6 +112,10 @@ __global__ void CollectActiveBlocksKernel(int *activeParticles,
 							continue;
 
 						blockID = GetBlockID(_x, _y, _z, numOfBlocksInY, numOfBlocksInZ);
+
+						/// DEBUG ///
+						// if (particleID == 303 && tetID == 6825504) printf("_x = %d, _y = %d, _z = %d, blockID = %d\n", _x, _y, _z, blockID); 
+
 						localTetID = GetLocalTetID(blockID, tetID, startOffsetsInLocalIDMap,
 									   blocksOfTets, localIDsOfTets);
 
@@ -112,7 +123,26 @@ __global__ void CollectActiveBlocksKernel(int *activeParticles,
 					}
 
 			/// DEBUG ///
-			if (localTetID == -1) while (1);
+			if (localTetID == -1) {
+				/*
+				if (particleID == 303) {
+					printf("%lf %lf %lf\n", posX, posY, posZ);
+					printf("tetID = %d\n", tetID);
+					printf("%lf %lf %lf\n", xLower, yLower, zLower);
+					for (int i = 0; i < lx; i++)
+						printf(" %d", dx[i]);
+					printf("\n");
+					for (int i = 0; i < ly; i++)
+						printf(" %d", dy[i]);
+					printf("\n");
+					for (int i = 0; i < lz; i++)
+						printf(" %d", dz[i]);
+					printf("\n");
+				}
+				return;
+				*/
+				while (1);
+			}
 		}
 
 		// localTetID must not be -1 at that point.

@@ -1,7 +1,7 @@
 /**********************************************
 File		:	main.cpp
 Author		:	Mingcheng Chen
-Last Update	:	June 9th, 2013
+Last Update	:	October 4th, 2013
 ***********************************************/
 
 #include "lcs.h"
@@ -93,9 +93,10 @@ extern "C" void BigBlockInitializationForPositions(double *globalVertexPositions
 extern "C" void BigBlockInitializationForVelocities(double *globalStartVelocities, double *globalEndVelocities,	int *blockedGlobalPointIDs, int *startOffsetInPoint,
 						double *startVelocitiesForBig, double *endVelocitiesForBig, int numOfInterestingBlocks);
 
-const char *configurationFile = "RungeKutta4.conf";
+//const char *configurationFile = "RungeKutta4.conf";
 //const char *configurationFile = "RungeKutta4ForTCPC.conf";
 //const char *configurationFile = "RungeKutta4ForUpperVasc.conf";
+const char *configurationFile = "RungeKutta4ForAR2.conf";
 const char *lastPositionFile = "lcsLastPositions.txt";
 const char *FTLEFile = "lcsFTLEValues.vtk";
 
@@ -485,6 +486,17 @@ void LaunchGPUforIntersectionQueries() {
 	// Unit Test for Tetrahedron-Block Intersection Kernel
 	startTime = clock();
 
+	/// DEBUG ///
+	/*
+	int specialTet = 6083453, specialBlk = 66;
+	char specialRes = 1;
+	UnitTestForTetBlkIntersection(frames[0]->GetTetrahedralGrid(),
+						   blockSize, globalMinX, globalMinY, globalMinZ,
+						   numOfBlocksInY, numOfBlocksInZ,
+						   &specialTet, &specialBlk, &specialRes,
+						   1, configure->GetEpsilonForTetBlkIntersection());
+	*/
+
 	if (configure->UseUnitTestForTetBlkIntersection()) {
 		UnitTestForTetBlkIntersection(frames[0]->GetTetrahedralGrid(),
 						   blockSize, globalMinX, globalMinY, globalMinZ,
@@ -510,6 +522,15 @@ void DivisionProcess() {
 	if (err) lcs::Error("Fail to create device interestingBlockMap");
 
 	numOfInterestingBlocks = 0;
+
+	/// DEBUG ///
+	/*
+	for (int i = 0; i < numOfQueries; i++)
+		if (queryTetrahedron[i] == 6083453 || queryTetrahedron[i] == 6083454) {
+			printf("tet: %d, blk: %d, res: %d\n", queryTetrahedron[i], queryBlock[i], queryResults[i]);
+		}
+	*/
+
 	for (int i = 0; i < numOfQueries; i++)
 		if (queryResults[i]) {
 			int blockID = queryBlock[i];
@@ -1336,9 +1357,6 @@ int RedistributeParticles(int *d_activeParticles, int numOfActiveParticles, int 
 	int sum;
 	sum = ExclusiveScanForInt(d_numOfParticlesByStageInBlocks, numOfActiveBlocks * numOfStages);
 
-	/// DEBUG ///
-	//printf("sum = %d\n", sum);
-
 	// Collect particles to blocks
 	CollectParticlesToBlocks(d_numOfParticlesByStageInBlocks, // Now it is a prefix sum array.
 				 d_particleOrders,
@@ -1440,7 +1458,7 @@ void Tracing() {
 	err = cudaMalloc(&d_offsetInBlocks, sizeof(int) * numOfInitialActiveParticles);
 	if (err) lcs::Error("Fail to create a buffer for device offsetInBlocks");
 
-	err = cudaMalloc(&d_numOfGroupsForBlocks, sizeof(int) * numOfInterestingBlocks);
+	err = cudaMalloc(&d_numOfGroupsForBlocks, sizeof(int) * (numOfInterestingBlocks + 1));
 	if (err) lcs::Error("Fail to create a buffer for device numOfGroupsForBlocks");
 
 	err = cudaMalloc(&d_activeBlocks, sizeof(int) * numOfInterestingBlocks);
@@ -1576,9 +1594,6 @@ void Tracing() {
 									       d_activeParticles[currActiveParticleArray],
 									       lastNumOfActiveParticles);
 
-			/// DEBUG ///
-			//printf("CollectActiveParticlesForNewRun done.\n");
-
 			lastNumOfActiveParticles = numOfActiveParticles;
 
 			if (!numOfActiveParticles) break;
@@ -1588,9 +1603,6 @@ void Tracing() {
 
 			int numOfActiveBlocks = RedistributeParticles(d_activeParticles[currActiveParticleArray],
 								      numOfActiveParticles, iBMCount++, maxNumOfStages);	
-
-			/// DEBUG ///
-			//printf("RedistributeParticles done.\n");
 
 			double averageParticlesInBlock = (double)numOfActiveParticles / numOfActiveBlocks;
 			//printf("numOfActiveParticles / numOfActiveBlocks = %lf\n", averageParticlesInBlock);
@@ -1619,8 +1631,6 @@ void Tracing() {
 			CalculateBlockSizeAndSharedMemorySizeForTracingKernel(averageParticlesInBlock, tracingBlockSize, tracingSharedMemorySize, multiple);
 
 			int numOfWorkGroups = AssignWorkGroups(numOfActiveBlocks, tracingBlockSize, multiple);
-
-			//printf("numOfWorkGroups = %d\n", numOfWorkGroups);	
 
 			LaunchBlockedTracingKernel(numOfWorkGroups, currTime, currTime + interval, tracingBlockSize, tracingSharedMemorySize, multiple);
 		}
@@ -1705,7 +1715,7 @@ void GetLastPositions(const char *fileName, double t = 0.0) {
 	}
 	fclose(fout);
 }
-/*
+
 void CalculateFTLE() {	
 	double minX = configure->GetBoundingBoxMinX();
 	double maxX = configure->GetBoundingBoxMaxX();
@@ -1751,6 +1761,7 @@ void CalculateFTLE() {
 	printf("DIMENSIONS %d %d %d\n", xRes + 1, yRes + 1, zRes + 1);
 	printf("ORIGIN %lf %lf %lf\n", minX, minY, minZ);
 	printf("SPACING %lf %lf %lf\n", dx, dy, dz);
+/*
 	idx = -1;
 	for (int i = 0; i <= xRes; i++)
 		for (int j = 0; j <= yRes; j++)
@@ -1758,9 +1769,10 @@ void CalculateFTLE() {
 				idx++;
 				double 
 			}
+*/
 	fclose(fout);	
 }
-*/
+
 int main() {
 	// Test the system
 	SystemTest();

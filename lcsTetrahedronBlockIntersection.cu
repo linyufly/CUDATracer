@@ -1,7 +1,7 @@
 /******************************************************************
 File			:	lcsTetrahedronBlockIntersection.cu
 Author			:	Mingcheng Chen
-Last Update		:	January 30th, 2013
+Last Update		:	October 23rd, 2013
 *******************************************************************/
 
 #include <stdio.h>
@@ -116,7 +116,7 @@ __device__ inline bool CheckPlane(double x1, double y1, double z1,
 					  double marginRatio) {
 	double x, y, z;
 	CrossProductThree(x2 - x1, y2 - y1, z2 - z1, x3 - x1, y3 - y1, z3 - z1, &x, &y, &z);
-	if (!Sign(VectorLength(x, y, z), epsilon)) return 0;
+	if (!Sign(VectorLength(x, y, z), 100 * epsilon)) return 0;
 
 	char tetPos = 0, tetNeg = 0;
 	char blkPos = 0, blkNeg = 0;
@@ -149,6 +149,7 @@ __device__ inline bool CheckPlane(double x1, double y1, double z1,
 
 	// Final Check
 	if (tetPos && blkPos || tetNeg && blkNeg) return 0;
+	if (tetPos + tetNeg == 0 || blkPos + blkNeg == 0) return 0; // Also deal with the degenerate case of spliting plane or any objects
 	return 1;
 }
 

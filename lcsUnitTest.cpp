@@ -1,7 +1,7 @@
 /**********************************************
 File			:		lcsUnitTest.cpp
 Author			:		Mingcheng Chen
-Last Update		:		June 3rd, 2012
+Last Update		:		October 23rd, 2013
 ***********************************************/
 
 #include "lcsUnitTest.h"
@@ -12,11 +12,19 @@ bool CheckPlane(const lcs::Vector &p1, const lcs::Vector &p2, const lcs::Vector 
 				const lcs::Tetrahedron &tetrahedron,
 				double localMinX, double localMinY, double localMinZ,
 				double blockSize, double epsilon) {
-	if (!lcs::Sign(Cross(p1 - p2, p1 - p3).Length(), epsilon)) return false;
+	/// DEBUG ///
+	//printf("check plane = %.20lf\n", Cross(p1 - p2, p1 - p3).Length());
+
+
+	if (!lcs::Sign(Cross(p1 - p2, p1 - p3).Length(), 100 * epsilon)) return false;
 	bool tetPos = 0, tetNeg = 0, blkPos = 0, blkNeg = 0;
 	for (int i = 0; i < 4; i++) {
 		lcs::Vector point = tetrahedron.GetVertex(i);
 		double directedVolume = lcs::Mixed(p1 - point, p2 - point, p3 - point);
+
+		/// DEBUG ///
+		//printf("%.20lf\n", directedVolume);
+
 		if (lcs::Sign(directedVolume, epsilon) < 0) tetNeg = 1;
 		if (lcs::Sign(directedVolume, epsilon) > 0) tetPos = 1;
 		if (tetNeg * tetPos) return false;
@@ -27,11 +35,19 @@ bool CheckPlane(const lcs::Vector &p1, const lcs::Vector &p2, const lcs::Vector 
 		if (i & 2) point.SetY(point.GetY() + blockSize);
 		if (i & 4) point.SetZ(point.GetZ() + blockSize);
 		double directedVolume = lcs::Mixed(p1 - point, p2 - point, p3 - point);
+
+		/// DEBUG ///
+		//printf("%.20lf\n", directedVolume);
+
 		if (lcs::Sign(directedVolume, epsilon) < 0) blkNeg = 1;
 		if (lcs::Sign(directedVolume, epsilon) > 0) blkPos = 1;
 		if (blkNeg * blkPos) return false;
 	}
 	if (tetNeg && blkNeg || tetPos && blkPos) return false;
+	if (tetNeg + tetPos == 0 || blkNeg + blkPos == 0) {
+		printf("Special Case!!!\n");
+		return false;
+	}
 	return true;
 }
 
@@ -56,7 +72,16 @@ void lcs::UnitTestForTetBlkIntersection(lcs::TetrahedralGrid *grid, double block
 	for (int i = 0; i < numOfQueries; i++) {
 		int tetID = queryTetrahedron[i];
 		int blkID = queryBlock[i];
+/*
+		if (tetID == 6825504 && blkID == 33) {
+			printf("tetID = %d, blkID = %d\n", tetID, blkID);
+		} else continue;
+*/
 		lcs::Tetrahedron tet = grid->GetTetrahedron(tetID);
+
+		/// DEBUG ///
+		tet.Output();
+
 		int x, y, z;
 		z = blkID % numOfBlocksInZ;
 		int temp = blkID / numOfBlocksInZ;
@@ -66,6 +91,8 @@ void lcs::UnitTestForTetBlkIntersection(lcs::TetrahedralGrid *grid, double block
 		double localMinX = globalMinX + x * blockSize;
 		double localMinY = globalMinY + y * blockSize;
 		double localMinZ = globalMinZ + z * blockSize;
+
+		printf("%lf, %lf, %lf: %lf\n", localMinX, localMinY, localMinZ, blockSize);
 
 		// Test tetrahedral edge and block point
 		bool flag = 0;
@@ -105,7 +132,11 @@ void lcs::UnitTestForTetBlkIntersection(lcs::TetrahedralGrid *grid, double block
 						if (CheckPlane(p1, p2, p3, tet, localMinX, localMinY, localMinZ, blockSize, epsilon)) {
 							flag = 1;
 
-							//printf("tetrahedral edge and block point: %d, %d %d %d\n", tetEdgeID, dx, dy, dz);
+							p1.Output();
+							p2.Output();
+							p3.Output();
+							printf("\n");
+							printf("tetrahedral edge and block point: %d, %d %d %d\n", tetEdgeID, dx, dy, dz);
 
 							break;
 						}

@@ -81,6 +81,10 @@ public:
 
 	double Length() const;
 
+	void Output() const {
+		printf("(%lf, %lf, %lf)\n", this->x, this->y, this->z);
+	}
+
 	friend lcs::Vector operator + (const lcs::Vector &, const lcs::Vector &);
 	friend lcs::Vector operator - (const lcs::Vector &, const lcs::Vector &);
 	friend lcs::Vector operator * (const lcs::Vector &, const double &);
@@ -133,6 +137,13 @@ public:
 		Vector B = this->vertices[2] - this->vertices[0];
 		Vector C = this->vertices[3] - this->vertices[0];
 		return fabs(Mixed(A, B, C)) / 6.0;
+	}
+
+	void Output() const {
+		for (int i = 0; i < 4; i++) {
+			if (i) printf(" ");
+			this->vertices[i].Output();
+		}
 	}
 
 private:
