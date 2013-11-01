@@ -1,7 +1,7 @@
 /**********************************************
 File		:	main.cpp
 Author		:	Mingcheng Chen
-Last Update	:	October 4th, 2013
+Last Update	:	October 30th, 2013
 ***********************************************/
 
 #include "lcs.h"
@@ -96,7 +96,8 @@ extern "C" void BigBlockInitializationForVelocities(double *globalStartVelocitie
 //const char *configurationFile = "RungeKutta4.conf";
 //const char *configurationFile = "RungeKutta4ForTCPC.conf";
 //const char *configurationFile = "RungeKutta4ForUpperVasc.conf";
-const char *configurationFile = "RungeKutta4ForAR2.conf";
+//const char *configurationFile = "RungeKutta4ForAR2.conf";
+const char *configurationFile = "RungeKutta4ForDoubleGyre3D.conf";
 const char *lastPositionFile = "lcsLastPositions.txt";
 const char *FTLEFile = "lcsFTLEValues.vtk";
 
@@ -238,11 +239,11 @@ void GetXYZFromPosition(const lcs::Vector &position, int &x, int &y, int &z) {
 }
 
 void SystemTest() {
-	printf("sizeof(double) = %d\n", sizeof(double));
-	printf("sizeof(float) = %d\n", sizeof(float));
-	printf("sizeof(int) = %d\n", sizeof(int));
-	printf("sizeof(int *) = %d\n", sizeof(int *));
-	printf("sizeof(char) = %d\n", sizeof(char));
+	printf("sizeof(double) = %d\n", (int)sizeof(double));
+	printf("sizeof(float) = %d\n", (int)sizeof(float));
+	printf("sizeof(int) = %d\n", (int)sizeof(int));
+	printf("sizeof(int *) = %d\n", (int)sizeof(int *));
+	printf("sizeof(char) = %d\n", (int)sizeof(char));
 	printf("\n");
 }
 
