@@ -93,11 +93,11 @@ extern "C" void BigBlockInitializationForPositions(double *globalVertexPositions
 extern "C" void BigBlockInitializationForVelocities(double *globalStartVelocities, double *globalEndVelocities,	int *blockedGlobalPointIDs, int *startOffsetInPoint,
 						double *startVelocitiesForBig, double *endVelocitiesForBig, int numOfInterestingBlocks);
 
-//const char *configurationFile = "RungeKutta4.conf";
+const char *configurationFile = "RungeKutta4.conf";
 //const char *configurationFile = "RungeKutta4ForTCPC.conf";
 //const char *configurationFile = "RungeKutta4ForUpperVasc.conf";
 //const char *configurationFile = "RungeKutta4ForAR2.conf";
-const char *configurationFile = "RungeKutta4ForDoubleGyre3D.conf";
+//const char *configurationFile = "RungeKutta4ForDoubleGyre3D.conf";
 const char *lastPositionFile = "lcsLastPositions.txt";
 const char *FTLEFile = "lcsFTLEValues.vtk";
 
