@@ -7,11 +7,13 @@ Last Update		:		December 22nd, 2012
 #include "lcs.h"
 #include "lcsUtility.h"
 #include <vtkUnstructuredGridReader.h>
+#include <vtkXMLUnstructuredGridReader.h>
 #include <cstring>
 
 ////////////////////////////////////////////////
 lcs::Frame::Frame(double timePoint, const char *dataFile) {
-	vtkUnstructuredGridReader *reader = vtkUnstructuredGridReader::New();
+	//vtkUnstructuredGridReader *reader = vtkUnstructuredGridReader::New();
+	vtkXMLUnstructuredGridReader *reader = vtkXMLUnstructuredGridReader::New();
 	reader->SetFileName(dataFile);
 	reader->Update();
 	this->tetrahedralGrid = new TetrahedralGrid(reader->GetOutput());
